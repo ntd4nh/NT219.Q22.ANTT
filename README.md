@@ -86,9 +86,9 @@ Client (Web / Mobile / Admin / Partner)
 
 | STT | Họ tên | MSSV |
 |-----|--------|------|
-| 1   |        |      |
-| 2   |        |      |
-| 3   |        |      |
+| 1   | Nguyễn Quốc Trường       | 24521896     |
+| 2   | Nguyễn Tấn Danh       | 24520262     |
+| 3   | Nguyễn Thị Tuyết Nhi       | 24521263     |
 
 ## 📄 License
 
