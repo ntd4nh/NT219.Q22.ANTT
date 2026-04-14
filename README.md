@@ -9,6 +9,8 @@
 [![Vault](https://img.shields.io/badge/Vault-1.15-FFEC6E?logo=vault&logoColor=black)](https://www.vaultproject.io/)
 [![Grafana](https://img.shields.io/badge/Grafana-10.4-F46800?logo=grafana&logoColor=white)](https://grafana.com/)
 [![License](https://img.shields.io/badge/License-Academic-blue)]()
+![Status](https://img.shields.io/badge/Tình_trạng-Đang_thực_hiện-yellow)
+
 
 > **Môn học:** NT219.Q22.ANTT – Mật mã học  
 > **Đề tài:** Bảo mật ứng dụng mạng dựa trên Cloud API cho dịch vụ doanh nghiệp nhỏ
