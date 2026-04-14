@@ -1,4 +1,4 @@
-# First Stage – Tổng quan dự án và tiến độ giai đoạn 1
+# First Stage – Báo cáo tiến độ giai đoạn 1
 
 > **Đề tài:** Cloud API-Based Network Application Security for Small Company Services  
 > **Môn học:** NT219.Q22.ANTT – Mật mã học  
@@ -6,186 +6,290 @@
 
 ---
 
-## 1. Tổng quan đề tài
+## Mục tiêu giai đoạn 1
 
-Dự án nghiên cứu và xây dựng một mô hình bảo mật toàn diện cho hệ thống ứng dụng mạng dựa trên API, triển khai trên nền tảng cloud và hướng đến đối tượng **doanh nghiệp nhỏ**.
-
-Hệ thống được thiết kế theo mô hình **API-first**, trong đó API đóng vai trò là trung tâm giao tiếp giữa client, các dịch vụ nội bộ và đối tác bên ngoài. Do API là điểm truy cập chính, việc đảm bảo an toàn tại tầng API trở thành yếu tố then chốt cho toàn bộ hệ thống.
-
-### Vì sao đề tài này quan trọng
-
-- Doanh nghiệp nhỏ ngày càng phụ thuộc vào API nhưng thường thiếu nguồn lực chuyên môn về bảo mật.
-- Một lỗ hổng nhỏ tại API (lộ token, sai phân quyền, thiếu xác thực webhook) có thể dẫn đến hậu quả nghiêm trọng: mất dữ liệu, gián đoạn dịch vụ, vi phạm pháp luật.
-- Các giải pháp bảo mật hiện có thường phức tạp và tốn kém, không phù hợp với quy mô và ngân sách của doanh nghiệp nhỏ.
-
-Mục tiêu cuối cùng của đề tài là đề xuất một giải pháp bảo mật **đủ an toàn, đủ thực tế, dễ vận hành và chi phí hợp lý**.
+Khởi tạo repository, thiết kế kiến trúc hệ thống và scaffold toàn bộ codebase để sẵn sàng cho việc triển khai các cơ chế bảo mật ở giai đoạn tiếp theo.
 
 ---
 
-## 2. Các rủi ro bảo mật trọng tâm
+## Tổng quan kết quả
 
-Dự án tập trung phân tích và xây dựng giải pháp cho 5 rủi ro bảo mật API phổ biến nhất:
-
-### 2.1. BOLA (Broken Object Level Authorization)
-
-Hệ thống xác thực được danh tính người dùng nhưng không kiểm tra quyền sở hữu trên từng tài nguyên cụ thể. Kẻ tấn công có thể thay đổi ID trong URL (ví dụ: `/orders/123` → `/orders/124`) để truy cập dữ liệu không thuộc quyền của mình.
-
-### 2.2. Broken Function Level Authorization / Token Misuse
-
-Người dùng thông thường có thể gọi được các chức năng dành riêng cho quản trị viên, hoặc token bị sử dụng sai mục đích (dùng token hết hạn, dùng token của user cho service nội bộ, token bị đánh cắp).
-
-### 2.3. Excessive Data Exposure
-
-API trả về nhiều trường dữ liệu hơn mức client cần thiết. Ví dụ: client chỉ cần tên và email nhưng API trả thêm role nội bộ, trạng thái tài khoản hoặc các thông tin nhạy cảm khác.
-
-### 2.4. Webhook Forgery / Replay
-
-Kẻ tấn công giả mạo webhook từ đối tác (ví dụ: gửi thông báo "thanh toán thành công" giả) hoặc chặn bắt một webhook hợp lệ rồi phát lại nhiều lần để gây xử lý sai trạng thái.
-
-### 2.5. Rate Abuse / Brute Force / Request Flooding
-
-Lạm dụng tần suất gọi API: thử password liên tục, spam endpoint tạo đơn hàng, hoặc gửi lượng lớn request để gây quá tải hệ thống.
+| Chỉ số | Giá trị |
+|--------|---------|
+| Tổng số file mới tạo | **31 files** |
+| Tổng số dòng code (thêm mới) | **~1,833 LOC** |
+| Số service Docker Compose | **10 containers** (bao gồm migration) |
+| Số microservice backend | **3** (user, order, webhook) |
+| Số bảng database | **4** (+ 4 indexes) |
+| Số test file (stub) | **3** |
+| Số commit | **9** |
 
 ---
 
-## 3. Kiến trúc hệ thống
-
-Hệ thống được thiết kế theo kiến trúc microservices với các tầng rõ ràng:
-
-```
-Client (Web / Mobile / Admin / Partner)
-          │
-          ▼
-    ┌─────────────────┐
-    │   API Gateway    │  Kong – TLS, JWT validation, rate limiting, CORS, logging
-    └────────┬────────┘
-             │
-    ┌────────▼────────┐
-    │ Identity Provider│  Keycloak – OAuth2/OIDC, quản lý vòng đời token
-    └─────────────────┘
-             │
-    ┌────────▼──────────────────────────────────┐
-    │           Backend Services (FastAPI)        │
-    │   User Service │ Order Service │ Admin Svc  │
-    │   Webhook Service                          │
-    └────────────────────────────────────────────┘
-             │
-    ┌────────▼──────────────────────────────────┐
-    │  PostgreSQL  │  Vault  │  Grafana + Loki   │
-    └────────────────────────────────────────────┘
-```
-
-### Vai trò từng thành phần
-
-| Thành phần | Công nghệ | Chức năng |
-|------------|-----------|-----------|
-| API Gateway | Kong 3.6 | Điểm vào duy nhất; xác thực token, giới hạn request, ghi log, routing |
-| Identity Provider | Keycloak 24.0 | Xác thực tập trung (OAuth2/OIDC), cấp và quản lý token |
-| User Service | FastAPI | Quản lý hồ sơ người dùng, kiểm tra quyền sở hữu dữ liệu |
-| Order Service | FastAPI | Quản lý đơn hàng, kiểm tra ownership chống BOLA |
-| Webhook Service | FastAPI | Nhận và xác thực webhook từ đối tác (HMAC, anti-replay) |
-| Database | PostgreSQL 16 | Lưu trữ dữ liệu người dùng, đơn hàng, audit events |
-| Secrets Management | HashiCorp Vault | Quản lý mật khẩu, API key, private key – không hard-code |
-| Observability | Grafana + Loki | Thu thập log tập trung, dashboard giám sát bảo mật |
-
----
-
-## 4. Tài sản cần bảo vệ
-
-| Nhóm tài sản | Ví dụ | Hậu quả nếu bị xâm phạm |
-|---------------|-------|--------------------------|
-| Dữ liệu người dùng & đơn hàng | Tên, SĐT, địa chỉ, lịch sử đơn | Lộ thông tin cá nhân, vi phạm pháp luật |
-| Token & thông tin xác thực | Access token, refresh token, API key | Giả mạo danh tính, truy cập trái phép |
-| API nhạy cảm & phân quyền | API admin, API sửa trạng thái đơn | Leo thang đặc quyền |
-| Webhook endpoint | Callback thanh toán, giao hàng | Xử lý sai trạng thái nghiệp vụ |
-| Tính sẵn sàng hệ thống | Uptime các API | Gián đoạn dịch vụ, mất doanh thu |
-
----
-
-## 5. Giải pháp bảo mật dự kiến
-
-| Rủi ro | Giải pháp | Cách triển khai |
-|--------|-----------|-----------------|
-| BOLA | Kiểm tra ownership tại backend | Mỗi service tự verify `user_id` từ token khớp với tài nguyên |
-| Broken Function Auth | Phân quyền theo role + scope | Keycloak cấp role; backend kiểm tra role trước khi thực thi |
-| Excessive Data Exposure | Response filtering | Chỉ trả các trường cần thiết, tách response schema theo role |
-| Webhook Forgery/Replay | HMAC + timestamp + dedup | Xác thực chữ ký HMAC, kiểm tra thời gian, lưu event ID chống lặp |
-| Rate Abuse | Rate limiting tại Gateway | Kong plugin giới hạn request/phút; backend bổ sung throttle |
-| Token Misuse | Quản lý vòng đời token | Token ngắn hạn, refresh token rotation, blacklist khi revoke |
-| Secret Exposure | Vault + env injection | Không lưu secret trong code; inject runtime qua Vault/env |
-| Thiếu truy vết | Structured audit logging | Ghi request_id, subject, action, IP, status cho mọi API call |
-
----
-
-## 6. Tiến độ giai đoạn 1
-
-### 6.1. Đã hoàn thành
-
-| Hạng mục | Chi tiết |
-|----------|---------|
-| Nghiên cứu đề tài | Phân tích proposal, xác định rủi ro, tài sản, mục tiêu bảo mật |
-| Thiết kế kiến trúc | Xác định các thành phần hệ thống và luồng giao tiếp |
-| Lựa chọn tech stack | FastAPI, Kong, Keycloak, PostgreSQL, Grafana+Loki, Vault, OPA |
-| Khởi tạo repository | Cấu trúc thư mục, Docker Compose, config hạ tầng |
-| Scaffold microservices | Boilerplate cho user-service, order-service, webhook-service |
-| Shared modules | Module xác thực JWT (auth.py) và audit logging (audit.py) |
-| Database schema | Bảng users, orders, audit_events, webhook_events |
-| Infrastructure config | Kong routing + plugins, Loki config, Grafana datasource |
-| Test stubs | Test case cho BOLA, webhook security, rate limiting |
-| Tài liệu | README, .env.example, proposal |
-
-### 6.2. Giai đoạn tiếp theo (dự kiến)
-
-| Hạng mục | Mô tả |
-|----------|-------|
-| Cấu hình Keycloak | Tạo realm, client, role, scope cho OAuth2/OIDC |
-| Implement JWT validation | Hoàn thiện module auth.py – kết nối JWKS endpoint |
-| Implement BOLA protection | Ownership check trong user-service và order-service |
-| Implement webhook security | HMAC signature verification, timestamp check, idempotency |
-| Cấu hình Kong plugins | JWT plugin, rate-limiting, CORS, request logging |
-| Kết nối Vault | Inject secrets vào services thay vì dùng .env |
-| Implement audit logging | Ghi log có cấu trúc vào PostgreSQL và Loki |
-| Viết test cases | Hoàn thiện test BOLA, webhook forgery, rate limiting |
-| Mô phỏng tấn công | Demo khai thác và demo phòng chống cho từng rủi ro |
-| Tài liệu báo cáo | Viết báo cáo chi tiết và chuẩn bị slide trình bày |
-
----
-
-## 7. Cấu trúc repository hiện tại
+## Cấu trúc thư mục hoàn chỉnh
 
 ```
 NT219.Q22.ANTT/
-├── config/
-│   ├── db/init.sql                            # Schema khởi tạo PostgreSQL
-│   ├── kong/kong.yml                          # Kong declarative configuration
-│   ├── loki/loki-config.yml                   # Loki log aggregation
-│   └── grafana/provisioning/datasources/      # Grafana auto-provisioning
-├── docs/
-│   ├── Proposal.md                            # Phân tích chi tiết đề tài
-│   ├── first-stage.md                         # Tài liệu giai đoạn 1 (file này)
-│   └── 21_Cloud API-Based Network...md       # Đề bài gốc
+├── .env.example                                      # Template biến môi trường (25 dòng)
+├── .gitignore                                        # Loại trừ secrets, build artifacts, IDE
+├── README.md                                         # Tổng quan dự án với badges (158 dòng)
+├── docker-compose.yml                                # Orchestration 10 services (227 dòng)
+│
+├── config/                                           # Cấu hình hạ tầng
+│   ├── db/init.sql                                   # Schema khởi tạo PostgreSQL (56 dòng)
+│   ├── kong/kong.yml                                 # Kong declarative config (58 dòng)
+│   ├── loki/loki-config.yml                          # Loki log aggregation (26 dòng)
+│   └── grafana/provisioning/datasources/
+│       └── datasource.yml                            # Auto-provision Loki datasource
+│
+├── docs/                                             # Tài liệu dự án
+│   ├── 21_Cloud API‑Based Network Application...md  # Đề cương đề tài
+│   ├── Proposal.md                                   # Đề xuất chi tiết (814 dòng)
+│   ├── Proposal.pdf                                  # Bản PDF
+│   └── first-stage.md                                # Báo cáo giai đoạn 1 (file này)
+│
 ├── src/
 │   ├── services/
-│   │   ├── requirements.txt                   # Dependencies chung cho services
-│   │   ├── user-service/                      # FastAPI – quản lý người dùng
-│   │   ├── order-service/                     # FastAPI – quản lý đơn hàng
-│   │   └── webhook-service/                   # FastAPI – xử lý webhook
-│   └── shared/
-│       ├── auth.py                            # JWT/Keycloak token validation
-│       └── audit.py                           # Structured audit logging
-├── tests/
-│   ├── test_bola.py                           # Test BOLA protection
-│   ├── test_webhook_security.py               # Test webhook forgery/replay
-│   └── test_rate_limiting.py                  # Test rate limiting
-├── docker-compose.yml                         # Orchestration toàn bộ hệ thống
-├── .env.example                               # Template biến môi trường
-├── .gitignore
-└── README.md
+│   │   ├── requirements.txt                          # Shared Python dependencies (8 packages)
+│   │   ├── user-service/                             # Microservice quản lý người dùng
+│   │   │   ├── Dockerfile                            # Python 3.12-slim, uvicorn
+│   │   │   ├── requirements.txt                      # Dependencies riêng
+│   │   │   └── app/
+│   │   │       ├── __init__.py
+│   │   │       ├── main.py                           # FastAPI app + health check (23 dòng)
+│   │   │       └── api.py                            # 2 endpoints (27 dòng)
+│   │   │
+│   │   ├── order-service/                            # Microservice quản lý đơn hàng
+│   │   │   ├── Dockerfile
+│   │   │   ├── requirements.txt
+│   │   │   └── app/
+│   │   │       ├── __init__.py
+│   │   │       ├── main.py                           # FastAPI app + health check (22 dòng)
+│   │   │       └── api.py                            # 4 endpoints (45 dòng)
+│   │   │
+│   │   └── webhook-service/                          # Microservice xử lý webhook
+│   │       ├── Dockerfile
+│   │       ├── requirements.txt
+│   │       └── app/
+│   │           ├── __init__.py
+│   │           ├── main.py                           # FastAPI app + health check (22 dòng)
+│   │           └── api.py                            # 2 endpoints (35 dòng)
+│   │
+│   └── shared/                                       # Module dùng chung
+│       ├── __init__.py
+│       ├── auth.py                                   # JWT token verification (50 dòng)
+│       └── audit.py                                  # Structured audit logging (44 dòng)
+│
+└── tests/                                            # Test stubs cho 3 rủi ro chính
+    ├── __init__.py
+    ├── test_bola.py                                  # 4 scenarios định nghĩa
+    ├── test_webhook_security.py                      # 5 scenarios định nghĩa
+    └── test_rate_limiting.py                         # 4 scenarios định nghĩa
 ```
 
 ---
 
-## 8. Thành viên nhóm
+## Chi tiết những gì đã hoàn thành
+
+### 1. Hạ tầng Docker Compose (`docker-compose.yml`)
+
+File cấu hình 227 dòng, định nghĩa 10 containers trên 1 Docker bridge network (`backend`), 5 named volumes, với health check và dependency ordering.
+
+| Service | Image | Port(s) | Vai trò |
+|---------|-------|---------|---------|
+| `keycloak` | quay.io/keycloak/keycloak:24.0 | 8080 | Identity Provider – OAuth2/OIDC |
+| `keycloak-db` | postgres:16-alpine | – | Database riêng cho Keycloak |
+| `kong` | kong:3.6 | 8000, 8443, 8001 | API Gateway – routing, JWT, rate limiting |
+| `kong-db` | postgres:16-alpine | – | Database riêng cho Kong |
+| `kong-migration` | kong:3.6 | – | Chạy `kong migrations bootstrap` |
+| `app-db` | postgres:16-alpine | 5432 | Database chính cho nghiệp vụ |
+| `user-service` | Build từ Dockerfile | – | Backend – quản lý người dùng |
+| `order-service` | Build từ Dockerfile | – | Backend – quản lý đơn hàng |
+| `webhook-service` | Build từ Dockerfile | – | Backend – xử lý webhook |
+| `loki` | grafana/loki:2.9.0 | 3100 | Thu thập log tập trung |
+| `grafana` | grafana/grafana:10.4.0 | 3000 | Dashboard giám sát |
+| `vault` | hashicorp/vault:1.15 | 8200 | Quản lý secrets |
+
+**Đặc điểm nổi bật:**
+- Tất cả PostgreSQL containers đều có health check (`pg_isready`)
+- Kong migration chạy trước Kong service (`service_completed_successfully`)
+- Backend services chờ `app-db` healthy trước khi start
+- Biến môi trường sử dụng `.env` file với giá trị mặc định fallback
+- Database chính mount `init.sql` vào `/docker-entrypoint-initdb.d/`
+
+### 2. Ba microservices FastAPI
+
+Mỗi service có cấu trúc chuẩn: `Dockerfile` (Python 3.12-slim + uvicorn), `main.py` (FastAPI app + `/health` endpoint), `api.py` (business routes).
+
+#### User Service (`src/services/user-service/`)
+
+| Endpoint | Method | Mô tả | Trạng thái |
+|----------|--------|-------|------------|
+| `/health` | GET | Health check | ✅ Hoạt động |
+| `/api/v1/users/me` | GET | Lấy hồ sơ user hiện tại | ⏳ Placeholder (cần Keycloak token) |
+| `/api/v1/users/{user_id}` | GET | Lấy hồ sơ theo ID | ⏳ Placeholder (TODO: BOLA protection) |
+
+#### Order Service (`src/services/order-service/`)
+
+| Endpoint | Method | Mô tả | Trạng thái |
+|----------|--------|-------|------------|
+| `/health` | GET | Health check | ✅ Hoạt động |
+| `/api/v1/orders/` | GET | Liệt kê đơn hàng | ⏳ Placeholder (TODO: ownership filtering) |
+| `/api/v1/orders/{order_id}` | GET | Chi tiết đơn hàng | ⏳ Placeholder (TODO: BOLA check) |
+| `/api/v1/orders/` | POST | Tạo đơn mới | ⏳ Placeholder |
+| `/api/v1/orders/{order_id}` | PATCH | Cập nhật trạng thái | ⏳ Placeholder (TODO: ownership + status) |
+
+#### Webhook Service (`src/services/webhook-service/`)
+
+| Endpoint | Method | Mô tả | Trạng thái |
+|----------|--------|-------|------------|
+| `/health` | GET | Health check | ✅ Hoạt động |
+| `/api/v1/webhooks/payment` | POST | Callback thanh toán | ⏳ Placeholder (TODO: HMAC + anti-replay) |
+| `/api/v1/webhooks/shipping` | POST | Callback giao hàng | ⏳ Placeholder (TODO: HMAC) |
+
+### 3. Module dùng chung (`src/shared/`)
+
+#### `auth.py` – Xác thực JWT (50 dòng)
+
+- Class `TokenClaims` định nghĩa cấu trúc claims: `sub` (user ID), `roles` (danh sách quyền), `scope` (OAuth2 scope)
+- Security scheme: `HTTPBearer`
+- Đọc cấu hình từ biến môi trường: `KEYCLOAK_URL`, `KEYCLOAK_REALM`
+- Dependency `get_current_user()` để inject vào routes
+- **Trạng thái:** Trả về HTTP 501 – chưa kết nối Keycloak JWKS endpoint
+- **TODO:** Fetch JWKS → Decode JWT → Validate signature, expiry, audience, issuer → Extract claims
+
+#### `audit.py` – Ghi log bảo mật (44 dòng)
+
+- Hàm `log_event()` ghi structured JSON log với các trường:
+  - `request_id` (UUID tự sinh)
+  - `timestamp` (UTC ISO format)
+  - `subject`, `action`, `resource`
+  - `ip_address`, `status`, `details`
+- Output ra stdout (sẵn sàng để Loki thu thập)
+- **Trạng thái:** ✅ Hoạt động – có thể gọi từ bất kỳ service nào
+
+### 4. Database Schema (`config/db/init.sql`)
+
+56 dòng SQL tạo 4 bảng và 4 indexes:
+
+| Bảng | Cột chính | Mục đích |
+|------|-----------|----------|
+| `users` | id (UUID PK), username, email, full_name, role, created_at, updated_at | Thông tin người dùng |
+| `orders` | id (UUID PK), user_id (FK → users), status, total, description, timestamps | Đơn hàng với FK hỗ trợ ownership check |
+| `audit_events` | id (BIGSERIAL PK), request_id, timestamp, subject, action, resource, ip_address, status, details (JSONB) | Truy vết hành động |
+| `webhook_events` | id (BIGSERIAL PK), source, event_type, payload (JSONB), signature, processed, received_at | Lưu webhook nhận được |
+
+**Indexes:** `idx_orders_user_id`, `idx_audit_events_subject`, `idx_audit_events_timestamp`, `idx_webhook_events_source`
+
+### 5. Cấu hình hạ tầng
+
+#### Kong Gateway (`config/kong/kong.yml` – 58 dòng)
+
+- **Routing:** 3 services → 3 routes
+  - `/api/v1/users` → `user-service:8000`
+  - `/api/v1/orders` → `order-service:8000`
+  - `/api/v1/webhooks` → `webhook-service:8000`
+- **Plugins:**
+  - `rate-limiting`: 60 requests/phút, policy local
+  - `jwt`: Validation qua URI param
+  - `cors`: Cho phép tất cả origins, methods GET/POST/PUT/DELETE/PATCH/OPTIONS, headers Authorization + Content-Type, max_age 3600s
+
+#### Loki (`config/loki/loki-config.yml` – 26 dòng)
+
+- HTTP listen trên port 3100
+- Storage: filesystem (chunks + rules)
+- Schema: TSDB v13, index period 24h
+- Replication factor: 1 (single instance)
+
+#### Grafana (`config/grafana/provisioning/datasources/datasource.yml`)
+
+- Auto-provision Loki làm datasource mặc định khi Grafana khởi động
+
+### 6. Test Stubs
+
+Đã tạo khung test (chỉ có docstring và TODO comments) cho 3 rủi ro bảo mật chính:
+
+| File | Rủi ro | Scenarios đã định nghĩa |
+|------|--------|------------------------|
+| `test_bola.py` | BOLA – Broken Object Level Authorization | 1. User truy cập đơn mình → 200<br>2. User truy cập đơn người khác → 403<br>3. Admin truy cập bất kỳ → 200<br>4. Không xác thực → 401 |
+| `test_webhook_security.py` | Webhook Forgery / Replay | 1. HMAC hợp lệ + timestamp hợp lệ → 200<br>2. HMAC sai → 403<br>3. Timestamp hết hạn → 403<br>4. Event ID trùng → 409<br>5. Thiếu signature header → 400 |
+| `test_rate_limiting.py` | Rate Abuse / Brute Force | 1. Request bình thường → 200<br>2. Vượt giới hạn → 429<br>3. Brute force bị chặn<br>4. Reset sau window |
+
+### 7. Dependencies (Python packages)
+
+File `src/services/requirements.txt` – shared across all 3 services:
+
+| Package | Version | Mục đích |
+|---------|---------|----------|
+| `fastapi` | ≥ 0.111.0 | Web framework |
+| `uvicorn[standard]` | ≥ 0.29.0 | ASGI server |
+| `sqlalchemy[asyncio]` | ≥ 2.0 | ORM (async) |
+| `asyncpg` | ≥ 0.29.0 | PostgreSQL async driver |
+| `python-jose[cryptography]` | ≥ 3.3.0 | JWT encode/decode |
+| `httpx` | ≥ 0.27.0 | HTTP client (gọi Keycloak JWKS) |
+| `pydantic` | ≥ 2.7 | Data validation |
+| `pydantic-settings` | ≥ 2.2 | Settings management |
+
+### 8. Tài liệu và cấu hình khác
+
+- **`README.md`** (158 dòng) – Tổng quan dự án với 10 badges, sơ đồ kiến trúc ASCII, bảng công nghệ, hướng dẫn triển khai, danh sách thành viên
+- **`.env.example`** (25 dòng) – Template 6 biến môi trường: Keycloak, Kong, App DB, Webhook, Grafana, Vault
+- **`.gitignore`** – Loại trừ `.env`, `__pycache__`, `node_modules`, IDE files, build artifacts
+- **`docs/Proposal.md`** (814 dòng) – Đề xuất chi tiết về giải pháp bảo mật
+
+---
+
+## Lịch sử Git
+
+```
+1c9fbff  docs: add first-stage document – project overview and phase 1 progress
+c6f076a  Add status badge and project details to README
+a29f129  docs: add badges, use formal tone, remove emoji icons from README
+8b3e405  feat: setup basic repository structure with microservices scaffold
+03f1848  Delete docs/PROPOSAL_PROJECT.md
+9e88bc3  Update team member details in README
+7257aa6  Merge remote main with local, keep local README
+24afeb9  Initial commit: project setup with README, .gitignore, and proposal docs
+4b17790  Initial commit
+```
+
+---
+
+## Trạng thái hiện tại
+
+Toàn bộ scaffold đã sẵn sàng. Các service có thể build Docker image và khởi chạy bằng `docker compose up -d`. Tất cả endpoint trả về response placeholder với TODO marker cho phần logic bảo mật sẽ được implement ở giai đoạn tiếp theo.
+
+**Tóm tắt trạng thái theo thành phần:**
+
+| Thành phần | Trạng thái |
+|------------|------------|
+| Docker Compose orchestration | ✅ Sẵn sàng chạy |
+| Keycloak (container) | ✅ Sẵn sàng start (chưa cấu hình realm) |
+| Kong Gateway (container) | ✅ Sẵn sàng start (cấu hình declarative có sẵn) |
+| PostgreSQL + Schema | ✅ Sẵn sàng start + auto-init |
+| Grafana + Loki | ✅ Sẵn sàng start + auto-provision datasource |
+| Vault | ✅ Sẵn sàng start (dev mode) |
+| 3 Backend services (code) | ⏳ Scaffold – endpoint trả placeholder |
+| JWT auth module | ⏳ Stub – chưa kết nối Keycloak |
+| Audit logging | ✅ Hoạt động (stdout JSON) |
+| Test cases | ⏳ Stub – chỉ có scenario definitions |
+
+---
+
+## Giai đoạn tiếp theo (dự kiến)
+
+1. Cấu hình Keycloak realm, client, role, scope
+2. Implement JWT validation kết nối Keycloak JWKS
+3. Implement ownership check chống BOLA trong user-service và order-service
+4. Implement HMAC signature verification và anti-replay cho webhook-service
+5. Cấu hình Kong JWT plugin và rate-limiting thực tế
+6. Kết nối Vault để inject secrets runtime
+7. Hoàn thiện audit logging ghi vào PostgreSQL và Loki
+8. Viết đầy đủ test cases và mô phỏng tấn công
+
+---
+
+## Thành viên nhóm
 
 | STT | Họ và tên | MSSV |
 |-----|-----------|------|
