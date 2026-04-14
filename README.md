@@ -33,15 +33,17 @@ Client (Web / Mobile / Admin / Partner)
           ▼
     ┌─────────────┐
     │ API Gateway  │  ← TLS termination, token validation, rate limiting, CORS, logging
+    │   (Kong)     │
     └─────┬───────┘
           │
     ┌─────▼───────┐
     │   Identity   │  ← OAuth2 / OIDC – xác thực & cấp token
     │   Provider   │
+    │  (Keycloak)  │
     └─────────────┘
           │
     ┌─────▼───────────────────────────────────┐
-    │            Backend Services              │
+    │         Backend Services (FastAPI)        │
     │  ┌──────────┐ ┌──────────┐ ┌──────────┐ │
     │  │  User    │ │  Order   │ │  Admin   │ │
     │  │  Service │ │  Service │ │  Service │ │
@@ -53,34 +55,82 @@ Client (Web / Mobile / Admin / Partner)
     └─────────────────────────────────────────┘
           │
     ┌─────▼───────────────────────────────────┐
-    │  Data Layer │ Secrets Layer │ Observability│
+    │  PostgreSQL │ Vault │ Grafana + Loki     │
     └─────────────────────────────────────────┘
 ```
 
+## 🔧 Tech Stack
+
+| Thành phần | Công nghệ | Vai trò |
+|------------|-----------|---------|
+| Backend API | **FastAPI** (Python) | Xây dựng REST API cho các microservices |
+| API Gateway | **Kong** | Quản lý routing, JWT validation, rate limiting, CORS |
+| Identity Provider | **Keycloak** | OAuth2/OIDC – xác thực và quản lý phân quyền |
+| Database | **PostgreSQL** | Lưu trữ dữ liệu người dùng, đơn hàng, audit |
+| Observability | **Grafana + Loki** | Thu thập log và hiển thị dashboard giám sát |
+| Secrets Management | **Vault** | Quản lý secrets, keys, credentials an toàn |
+| Authorization Policy | **OPA** | Policy-based authorization nâng cao |
+| Infrastructure | **Docker Compose** | Dựng toàn bộ hệ thống trên môi trường local |
+
 ## 🔐 Giải pháp bảo mật
 
-- **Xác thực tập trung** – OAuth2/OIDC qua Identity Provider
+- **Xác thực tập trung** – OAuth2/OIDC qua Keycloak
 - **Phân quyền mức tài nguyên** – kiểm tra ownership, role, scope tại backend
 - **Service Identity** – Client Credentials / mTLS cho giao tiếp nội bộ
 - **Webhook Security** – HMAC + timestamp + chống replay
-- **Rate Limiting** – giới hạn tần suất truy cập tại API Gateway
-- **Secrets Management** – Vault / KMS, không hard-code trong source
+- **Rate Limiting** – giới hạn tần suất truy cập tại Kong Gateway
+- **Secrets Management** – Vault, không hard-code trong source
 - **Logging & Audit** – request_id, timestamp, subject, route, IP, status
 
 ## 📁 Cấu trúc thư mục
 
 ```
 .
-├── docs/               # Tài liệu dự án (proposal, slide, báo cáo)
-├── src/                # Source code
-├── config/             # File cấu hình
-├── tests/              # Test cases
+├── config/                          # Cấu hình hạ tầng
+│   ├── db/init.sql                  # Schema khởi tạo PostgreSQL
+│   ├── kong/kong.yml                # Kong declarative config
+│   ├── loki/loki-config.yml         # Loki log aggregation config
+│   └── grafana/provisioning/        # Grafana datasource provisioning
+├── docs/                            # Tài liệu dự án (proposal, slide, báo cáo)
+├── src/
+│   ├── services/                    # Backend microservices
+│   │   ├── user-service/            # Quản lý người dùng
+│   │   ├── order-service/           # Quản lý đơn hàng
+│   │   └── webhook-service/         # Xử lý webhook
+│   └── shared/                      # Module dùng chung (auth, audit)
+├── tests/                           # Test cases bảo mật
+├── docker-compose.yml               # Docker Compose orchestration
+├── .env.example                     # Template biến môi trường
+├── .gitignore
 └── README.md
 ```
 
 ## 🚀 Hướng dẫn chạy
 
-> *Sẽ được cập nhật khi triển khai demo.*
+### Yêu cầu
+
+- Docker & Docker Compose
+
+### Khởi chạy
+
+```bash
+# 1. Clone repo
+git clone https://github.com/ntd4nh/NT219.Q22.ANTT.git
+cd NT219.Q22.ANTT
+
+# 2. Tạo file .env từ template
+cp .env.example .env
+
+# 3. Khởi chạy toàn bộ hệ thống
+docker compose up -d
+
+# 4. Truy cập các service
+#    - Kong Gateway:  http://localhost:8000
+#    - Kong Admin:    http://localhost:8001
+#    - Keycloak:      http://localhost:8080
+#    - Grafana:       http://localhost:3000
+#    - Vault:         http://localhost:8200
+```
 
 ## 👥 Thành viên
 
