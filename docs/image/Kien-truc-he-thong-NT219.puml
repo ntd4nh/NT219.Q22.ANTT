@@ -1,0 +1,294 @@
+@startuml logical_overview
+' §5.1 — Kiến trúc logic
+title Kiến trúc logic — Bảo mật API Cloud cho SME (ShopFlow)
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+package "Clients" as pkg_clients {
+  [Web SPA] as lo_Web
+  [Mobile App] as lo_Mobile
+}
+
+package "Edge (Self-host)" as pkg_edge {
+  [Nginx + ModSecurity WAF] as lo_WAF
+  [Kong OSS Gateway] as lo_GW
+  [Webhook Authorizer] as lo_Auth
+}
+
+package "Identity" as pkg_identity {
+  [OIDC IdP\n(Keycloak)] as lo_IdP
+}
+
+package "Microservices" as pkg_services {
+  [User Service] as lo_US
+  [Order Service] as lo_OS
+  [Billing Service] as lo_BS
+}
+
+package "Crypto & Secrets" as pkg_crypto {
+  [Vault OSS\n(Transit + KV)] as lo_Vault
+}
+
+package "Storage" as pkg_storage {
+  database "PostgreSQL" as lo_DB
+}
+
+package "Observability" as pkg_observe {
+  [Prometheus + Loki + Grafana] as lo_CW
+}
+
+package "External" as pkg_external {
+  [Payment Provider] as lo_PSP
+}
+
+lo_Web --> lo_WAF : HTTPS / TLS 1.3
+lo_Mobile --> lo_WAF : HTTPS / TLS 1.3
+lo_WAF --> lo_GW
+lo_Web --> lo_IdP : OIDC + PKCE
+lo_Mobile --> lo_IdP : OIDC + PKCE
+lo_GW --> lo_IdP : JWKS cache validate
+lo_GW --> lo_US : Bearer JWT
+lo_GW --> lo_OS : Bearer JWT
+lo_GW --> lo_BS : Bearer JWT
+lo_US --> lo_Vault : envelope encrypt
+lo_OS --> lo_Vault
+lo_BS --> lo_Vault
+lo_US --> lo_DB
+lo_OS --> lo_DB
+lo_BS --> lo_DB
+lo_GW --> lo_CW
+lo_US --> lo_CW
+lo_OS --> lo_CW
+lo_BS --> lo_CW
+lo_PSP --> lo_GW : HMAC signed webhook
+lo_GW --> lo_Auth : invoke authorizer
+lo_Auth --> lo_BS : forward if valid
+
+@enduml
+
+
+@startuml trust_zones
+' §4.2 — Trust boundaries
+title Trust zones và ranh giới tin cậy
+top to bottom direction
+skinparam packageStyle rectangle
+
+package "Untrusted — Internet" #FFE6E6 {
+  [Client SPA/Mobile] as tz_Client
+  [Third-party Provider] as tz_TP
+}
+
+package "DMZ / Edge" #FFF4E6 {
+  [Nginx + ModSecurity] as tz_CF
+  [Kong OSS Gateway] as tz_APIGW
+}
+
+package "Security Zone" #E6F3FF {
+  [OIDC IdP] as tz_IdP
+  [Vault OSS] as tz_Vault
+}
+
+package "App Private Subnet" #E6FFE6 {
+  [Webhook Authorizer] as tz_Auth
+  [User Service] as tz_UserSvc
+  [Order Service] as tz_OrderSvc
+  [Billing Service] as tz_BillingSvc
+}
+
+package "Data Zone" #F0E6FF {
+  database "PostgreSQL" as tz_DB
+}
+
+package "Operations" #F5F5F5 {
+  [Prometheus + Loki + Grafana] as tz_CW
+}
+
+tz_Client --> tz_CF : TLS 1.3
+tz_CF --> tz_APIGW
+tz_Client --> tz_IdP : OIDC PKCE
+tz_APIGW --> tz_IdP : JWKS cache validate
+tz_APIGW --> tz_UserSvc
+tz_APIGW --> tz_OrderSvc
+tz_APIGW --> tz_BillingSvc
+tz_TP --> tz_APIGW : HMAC webhook
+tz_APIGW --> tz_Auth : webhook verify
+tz_Auth --> tz_BillingSvc : forward if valid
+tz_UserSvc --> tz_Vault
+tz_OrderSvc --> tz_Vault
+tz_BillingSvc --> tz_Vault
+tz_UserSvc --> tz_DB
+tz_OrderSvc --> tz_DB
+tz_BillingSvc --> tz_DB
+tz_APIGW --> tz_CW
+tz_UserSvc --> tz_CW
+tz_OrderSvc --> tz_CW
+tz_BillingSvc --> tz_CW
+
+@enduml
+
+
+@startuml deployment_docker_distributed
+' §5.2 — Triển khai Docker phân tán đa node
+title Triển khai Docker phân tán (không dồn vào một cụm)
+skinparam componentStyle rectangle
+
+cloud "Internet" as dep_inet
+
+node "Edge Node\nDocker Engine + Compose" as dep_edge {
+  [Nginx + ModSecurity WAF Container] as dep_CF
+  [API Gateway Container] as dep_GW
+  [Webhook Authorizer Container] as dep_AUTH
+}
+
+node "Identity Node\nDocker Engine + Compose" as dep_id {
+  [Keycloak Container\n(OIDC IdP)] as dep_IdP
+}
+
+node "Security Node\nDocker Engine + Compose" as dep_sec {
+  [Vault OSS Container\n(Transit + KV)] as dep_Vault
+}
+
+node "App Node A\nDocker Engine + Compose" as dep_app_a {
+  [User Service Container] as dep_US
+  [Order Service Container] as dep_OS
+}
+
+node "App Node B\nDocker Engine + Compose" as dep_app_b {
+  [Billing Service Container] as dep_BS
+}
+
+node "Data Node" as dep_data {
+  database "PostgreSQL Container" as dep_DB
+}
+
+node "Observability Node\nDocker Engine + Compose" as dep_obs {
+  [Prometheus Container] as dep_Prom
+  [Loki Container] as dep_Loki
+  [Grafana Container] as dep_Grafana
+}
+
+dep_inet --> dep_CF
+dep_CF --> dep_GW
+dep_GW --> dep_IdP : JWKS validate
+dep_GW --> dep_US
+dep_GW --> dep_OS
+dep_GW --> dep_BS
+dep_GW --> dep_AUTH : webhook verify
+dep_AUTH --> dep_BS : if valid
+dep_US --> dep_DB
+dep_OS --> dep_DB
+dep_BS --> dep_DB
+dep_US --> dep_Vault
+dep_OS --> dep_Vault
+dep_BS --> dep_Vault
+dep_GW --> dep_Prom
+dep_US --> dep_Prom
+dep_OS --> dep_Prom
+dep_BS --> dep_Prom
+dep_GW --> dep_Loki
+dep_US --> dep_Loki
+dep_OS --> dep_Loki
+dep_BS --> dep_Loki
+dep_Grafana --> dep_Prom
+dep_Grafana --> dep_Loki
+
+@enduml
+
+
+@startuml seq_oidc_pkce
+' §5.3 — OIDC + PKCE
+title Luồng 1 — OIDC Authorization Code + PKCE
+autonumber
+
+actor "Client SPA" as seq1_C
+participant "OIDC IdP" as seq1_IdP
+participant "API Gateway" as seq1_GW
+participant "Order Service" as seq1_S
+
+seq1_C -> seq1_C : generate code_verifier\n& code_challenge
+seq1_C -> seq1_IdP : Authorize (PKCE)
+seq1_IdP --> seq1_C : authorization_code
+seq1_C -> seq1_IdP : token exchange\n(+ code_verifier)
+seq1_IdP --> seq1_C : access JWT\n+ refresh token
+seq1_C -> seq1_GW : API request\nAuthorization: Bearer JWT
+seq1_GW -> seq1_GW : verify JWT signature\nexp, aud, iss
+seq1_GW -> seq1_S : forward + claims
+seq1_S -> seq1_S : AuthZ check\n(owner / tenant)
+seq1_S --> seq1_C : response (filtered DTO)
+
+note right of seq1_GW
+  Mật mã: PKCE, JWS (RS256/ES256),
+  access token TTL ngắn (5–15 phút)
+end note
+
+@enduml
+
+
+@startuml seq_s2s
+' §5.4 — Service-to-service
+title Luồng 2 — Service-to-service (Client Credentials)
+autonumber
+
+participant "Billing Service" as seq2_B
+participant "OIDC IdP" as seq2_IdP
+participant "Order Service" as seq2_O
+
+seq2_B -> seq2_IdP : client_credentials
+seq2_IdP --> seq2_B : short-lived JWT
+seq2_B -> seq2_O : internal API\nBearer JWT
+seq2_O -> seq2_O : validate scope (m2m)
+seq2_O --> seq2_B : result
+
+note right of seq2_IdP
+  Client secret lưu trong
+  Vault OSS (KV)
+end note
+
+@enduml
+
+
+@startuml seq_webhook_hmac
+' §5.5 — Webhook HMAC
+title Luồng 3 — Webhook có chữ ký HMAC
+autonumber
+
+participant "Payment Provider" as seq3_PSP
+participant "API Gateway" as seq3_GW
+participant "Webhook Authorizer" as seq3_AUTH
+participant "Billing Service" as seq3_B
+
+seq3_PSP -> seq3_PSP : body + timestamp + nonce
+seq3_PSP -> seq3_PSP : HMAC-SHA256(secret)
+seq3_PSP -> seq3_GW : POST webhook\nSignature header
+seq3_GW -> seq3_AUTH : invoke custom authorizer
+seq3_AUTH -> seq3_AUTH : check timestamp + nonce window
+seq3_AUTH -> seq3_AUTH : recompute HMAC\n(constant-time compare)
+seq3_AUTH -> seq3_B : forward if valid
+seq3_B -> seq3_B : idempotent process
+
+@enduml
+
+
+@startuml seq_envelope_encryption
+' §5.6 — Envelope encryption
+title Luồng 4 — Envelope encryption (at-rest)
+left to right direction
+
+rectangle "Order Service" as seq4_Svc
+rectangle "App logic" as seq4_App
+rectangle "Ciphertext" as seq4_Cipher
+rectangle "Vault Transit Key" as seq4_Vault
+database "PostgreSQL" as seq4_DB
+
+seq4_Svc --> seq4_App : generate DEK
+seq4_App --> seq4_Cipher : AES-256-GCM\nencrypt data
+seq4_App --> seq4_Vault : encrypt DEK
+seq4_Vault --> seq4_DB : store wrapped DEK
+seq4_Cipher --> seq4_DB : store ciphertext
+
+note bottom of seq4_Vault
+  DEK per-record hoặc per-tenant
+end note
+
+@enduml

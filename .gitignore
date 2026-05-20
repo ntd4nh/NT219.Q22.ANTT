@@ -1,0 +1,57 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Env / Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Build / cache
+dist/
+build/
+coverage/
+.cache/
+tmp/
+temp/
+
+# Docker local data
+**/.docker/
+**/data/
+**/volumes/
+
+# Terraform / IaC
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Misc
+*.bak
+*.tmp
