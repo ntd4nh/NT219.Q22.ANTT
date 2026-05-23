@@ -7,3 +7,9 @@ D3_WebhookForgery,baseline,10,120,8,HMAC verify chua bat
 D3_WebhookForgery,hardened,100,138,0,HMAC+timestamp+nonce bat
 D4_SSRF,baseline,25,135,3,allowlist chua toi uu
 D4_SSRF,hardened,100,150,0,allowlist+deny metadata IP bat
+INFRA_ModSecurity,baseline,0,125,0,WAF chua bat block mode
+INFRA_ModSecurity,hardened,95,142,1,OWASP CRS On tai edge
+INFRA_VaultTransit,baseline,0,110,0,chua dung Vault Transit
+INFRA_VaultTransit,hardened,100,118,0,KV+Transit+policy app-readonly
+INFRA_TLS_mTLS,baseline,0,130,0,chua bat TLS/mTLS
+INFRA_TLS_mTLS,hardened,100,155,0,HTTPS edge + mTLS webhook route

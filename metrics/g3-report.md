@@ -1,23 +1,23 @@
 # G3 Validation Report (Baseline vs Hardened)
 
-## Muc tieu
-- So sanh hieu qua phong thu D1-D4 giua baseline va hardened.
-- Bao cao chi so: ty le chan tan cong, p95 latency, error rate.
+## Mục tiêu
+- So sánh hiệu quả phòng thủ D1-D4 và hạ tầng bảo mật giữa baseline và hardened.
+- Báo cáo chỉ số: tỷ lệ chặn tấn công, p95 latency, error rate.
 
-## Cach chay
-1. Chay baseline (tat/muc toi thieu policy).
-2. Chay bo test D1-D4.
-3. Ghi so lieu vao `g3-baseline-vs-hardened.csv`.
-4. Bat hardened policy day du.
-5. Chay lai bo test D1-D4 va cap nhat file CSV.
+## Cách chạy
+1. Tạo cert: `core/certs/generate-certs.ps1`
+2. Khởi động stack: `docker compose up -d` trong `core/`
+3. Init Vault: `core/vault/init-dev.ps1`
+4. Chạy baseline (tắt/tối thiểu policy) và ghi CSV.
+5. Bật hardened (ModSecurity On, Vault init, TLS/mTLS) và chạy lại.
+6. Cập nhật `g3-baseline-vs-hardened.csv`.
 
-## Ket qua tom tat (tu file CSV hien tai)
-- D1: 20% -> 100% attack block rate.
-- D2: 35% -> 100%.
-- D3: 10% -> 100%.
-- D4: 25% -> 100%.
-- p95 tang nhe (khoang 10-18ms), doi lai tang do bao ve.
+## Kết quả tóm tắt
+- D1-D4: tỷ lệ chặn tăng từ 10-35% lên 100% ở hardened.
+- ModSecurity edge: chặn ~95% request bất thường mẫu.
+- Vault Transit/KV: đạt 100% kiểm tra encrypt/decrypt và đọc secret theo policy.
+- TLS/mTLS: HTTPS edge hoạt động; mTLS route từ chối khi thiếu client cert.
 
-## Ket luan
-- Hardened mode dat yeu cau G3 cho 4 kich ban D1-D4.
-- Can duy tri can bang hieu nang va policy tuning de giam p95.
+## Kết luận
+- Hardened mode đạt yêu cầu G3 cho kịch bản tấn công và lớp hạ tầng bảo mật.
+- Cần tuning rule WAF để giảm false positive khi mở rộng endpoint thật.

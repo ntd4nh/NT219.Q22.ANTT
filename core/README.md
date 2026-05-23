@@ -1,30 +1,64 @@
 # Core Stack README
 
-## Cau truc
+## Cấu trúc
 
-- `docker-compose.yml`: stack edge, gateway, idp, app mock, observability.
+- `docker-compose.yml`: stack edge (ModSecurity), gateway, IdP, Vault, Loki, observability.
 - `kong/kong.yml`: declarative routes.
-- `nginx/nginx.conf`: edge reverse proxy.
-- `observability/prometheus.yml`: scrape config.
+- `nginx/`: ModSecurity edge image + mTLS billing proxy.
+- `vault/`: cấu hình và script init lab.
+- `loki/`, `promtail/`: log pipeline.
+- `certs/`: chứng chỉ TLS/mTLS lab.
+- `observability/`: Prometheus + Grafana provisioning.
 
-## Chay nhanh
+## Khởi chạy
+
+### 1) Tạo chứng chỉ TLS/mTLS (bắt buộc trước khi build edge)
+
+```powershell
+cd core/certs
+powershell -ExecutionPolicy Bypass -File .\generate-certs.ps1
+cd ..
+```
+
+### 2) Khởi động stack
 
 ```powershell
 cd core
+docker compose build edge-nginx
 docker compose up -d
 docker compose ps
 ```
 
-## Kiem tra E2E co ban
+### 3) Khởi tạo Vault (KV + Transit)
 
 ```powershell
-curl http://localhost/api/orders
-curl http://localhost/api/users
-curl http://localhost/api/billing
+$env:VAULT_ADDR = "http://127.0.0.1:8200"
+$env:VAULT_TOKEN = "dev-root-token"
+powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
 ```
 
-## Muc tieu ngay 3-5
+## Kiểm tra nhanh
 
-- Day 3: route thong suot qua Nginx -> Kong -> service.
-- Day 4: bo sung auth verify tai gateway/service.
-- Day 5: chot tenant/object flow va seed data test.
+```powershell
+# HTTP qua edge (ModSecurity)
+curl http://localhost/api/orders
+
+# HTTPS edge (bo qua verify cert lab)
+curl -k https://localhost/api/users
+
+# mTLS webhook route (can client cert)
+curl -k --cert certs/client.crt --key certs/client.key https://localhost:8443/api/billing/webhook -X POST -d "{\"event\":\"test\"}" -H "Content-Type: application/json"
+```
+
+## Observability
+
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000 (admin/admin)
+- Loki query trong Grafana Explore: `{service="kong"}`
+
+## Vault lab
+
+- UI/API: http://127.0.0.1:8200
+- Token dev: `dev-root-token`
+- Secret paths: `secret/data/jwt`, `secret/data/hmac`, `secret/data/db-credentials`
+- Transit key: `shopflow-master`
