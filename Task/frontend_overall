@@ -1,0 +1,304 @@
+# Kế hoạch Frontend — ShopFlow Security Dashboard
+
+**Đồ án:** NT219.Q22.ANTT — Cloud API-Based Network Application Security for SME  
+**Frontend:** React + Vite, Vanilla CSS, Dark Mode Glassmorphism  
+**Phục vụ:** Demo, báo cáo, slide trực quan cho nhóm
+
+---
+
+## 🎯 Mục tiêu
+
+Xây dựng một **Admin Dashboard** đẹp, hiện đại, khoa học để:
+1. Trực quan hóa kiến trúc bảo mật API của hệ thống.
+2. Giao tiếp thật với các microservice (Orders, Users, Billing) qua Kong Gateway.
+3. Biểu diễn D1-D4 (BOLA, Token Replay, Webhook Forgery, SSRF) ngay trên UI — phục vụ demo live.
+
+---
+
+## 🏗️ Kiến trúc Frontend
+
+```
+Browser
+  └── Nginx (port 80/443)
+        └── Kong API Gateway (port 8000)
+              ├── /api/orders   → order-service
+              ├── /api/users    → user-service
+              ├── /api/billing  → billing-service
+              └── /            → shopflow-frontend (React SPA)
+```
+
+**Tech Stack:**
+- **Framework:** React 18 + Vite 5
+- **Routing:** react-router-dom v6
+- **Icons:** lucide-react
+- **Styling:** Vanilla CSS (Design System tự build)
+- **Fonts:** Inter (body) + JetBrains Mono (code/terminal)
+- **Container:** Nginx:alpine (serve static build)
+
+---
+
+## 📁 Cấu trúc thư mục
+
+```
+frontend/
+├── Dockerfile
+├── index.html
+├── package.json
+├── vite.config.js
+└── src/
+    ├── main.jsx                  # Entry point, BrowserRouter
+    ├── App.jsx                   # Layout (Sidebar + Routes)
+    ├── index.css                 # Design system: tokens, glassmorphism, utilities
+    ├── components/
+    │   ├── Sidebar.jsx/.css      # Navigation sidebar
+    │   ├── TopBar.jsx/.css       # Header bar với realtime clock
+    │   ├── StatCard.jsx/.css     # Metric card tái sử dụng
+    │   ├── ResponseViewer.jsx    # JSON response viewer với syntax highlight
+    │   └── AttackBadge.jsx       # Badge màu cho HTTP status
+    └── pages/
+        ├── Dashboard.jsx/.css    # Trang tổng quan
+        ├── Services.jsx/.css     # Trang gọi API services
+        ├── SecurityLab.jsx/.css  # Trang demo D1-D4
+        └── TokensPage.jsx/.css   # Trang quản lý JWT token
+```
+
+---
+
+## 🎨 Design System
+
+### Color Palette (Dark Mode)
+| Token | Hex | Dùng cho |
+|-------|-----|----------|
+| `--bg-dark` | `#0f172a` | Background chính |
+| `--bg-panel` | `rgba(30,41,59,0.7)` | Glassmorphism panel |
+| `--accent` | `#3b82f6` (blue) | Primary actions, active states |
+| `--accent-purple` | `#8b5cf6` | Gradient kết hợp với accent |
+| `--success` | `#10b981` | HTTP 200, pass tests |
+| `--danger` | `#ef4444` | HTTP 4xx/5xx, blocked attacks |
+| `--warning` | `#f59e0b` | HTTP 401, loading states |
+| `--border` | `rgba(255,255,255,0.1)` | Viền panel |
+
+### Typography
+- **Headings:** Inter 600–800
+- **Body:** Inter 400–500
+- **Code/JSON/Terminal:** JetBrains Mono 400–500
+
+### Effects
+- **Glassmorphism:** `backdrop-filter: blur(12px)` + semi-transparent background
+- **Glow:** `box-shadow: 0 0 20px rgba(59,130,246,0.4)` cho active elements
+- **Gradient text:** Heading logo blue→purple gradient
+- **Animations:** `fadeIn` (page load), `pulse` (status), `shimmer` (loading)
+
+---
+
+## 📄 Chi tiết từng trang
+
+### 1. `App.jsx` — Layout Root
+- Layout: `display: flex` — Sidebar (260px cố định) + Main Content (flex: 1)
+- React Router `<Routes>` với 4 routes:
+  - `/` → Dashboard
+  - `/services` → Services
+  - `/security-lab` → SecurityLab
+  - `/tokens` → TokensPage
+- Shared state: `bearerToken` (string) — dùng chung cho Services + SecurityLab
+
+---
+
+### 2. `components/Sidebar.jsx` — Thanh điều hướng
+**Nội dung:**
+- Logo: Icon `ShieldCheck` + chữ "ShopFlow" gradient + subtitle "Security Lab"
+- Nav links: Dashboard, Services, Security Lab, Tokens/Auth
+  - Active state: gradient background + left border accent + slight translateX
+  - Hover: translucent background + translate
+- Footer: **System Status** — ping `/api/orders` mỗi 15s, hiện Wifi icon + text "Stack online/offline"
+- Footer: text nhỏ "NT219.Q22.ANTT"
+
+---
+
+### 3. `components/TopBar.jsx` — Header
+**Nội dung:**
+- Trái: Breadcrumb — tên trang hiện tại
+- Phải: Đồng hồ realtime (cập nhật mỗi giây), ngày giờ Việt Nam
+- Badge: "🔴 Offline" / "🟢 Online" nhỏ gọn
+
+---
+
+### 4. `pages/Dashboard.jsx` — Tổng quan
+**Layout:** Grid 2 cột + full-width panels
+
+**Phần A — Stat Cards (4 cards, grid 4 cột):**
+| Card | Icon | Nội dung | Màu |
+|------|------|----------|-----|
+| Total Requests | `Activity` | Mock: 1,247 | Blue |
+| Blocked | `ShieldAlert` | Mock: 38 | Red |
+| Active Services | `Server` | Live ping: 3/3 | Green |
+| Avg Latency | `Timer` | Mock: 142ms | Purple |
+
+Mỗi card: gradient border glow, số to, trend indicator (+/-)
+
+**Phần B — Architecture Flow Diagram:**
+- Vẽ bằng CSS/SVG thuần: `Client → Nginx WAF → Kong → [Orders | Users | Billing]`
+- Mỗi node là một box có icon + tên + port
+- Animated connecting arrows (dashed line animation)
+- Keycloak + Vault + Prometheus nằm bên dưới dạng "Supporting Services"
+
+**Phần C — Service Status Panel (grid 3 cột):**
+- Mỗi service: tên, URL, chấm trạng thái (xanh/đỏ), nút "Ping" → fetch HEAD request
+- Hiện HTTP status code + latency sau khi ping
+
+**Phần D — Security Stack Panel:**
+- Bảng: Component | URL | Port | Vai trò
+- Keycloak, Vault, Kong, ModSecurity, Prometheus, Grafana, Loki
+
+---
+
+### 5. `pages/Services.jsx` — Gọi API Services
+**Layout:** 2 phần — Token Input (trên) + API Explorer (dưới)
+
+**Phần A — Token Input:**
+- `<textarea>` paste Bearer Token
+- Nút "Decode": parse JWT (split by `.`, base64 decode phần payload), hiện:
+  - `sub`, `tenant_id`, `exp` (convert timestamp → thời gian đọc được), `iss`
+- Badge màu: "Valid" (exp > now) / "Expired" (exp < now)
+
+**Phần B — API Explorer (3 tabs: Orders / Users / Billing):**
+Mỗi tab:
+- Method selector: GET
+- URL hiển thị: `/api/orders`
+- Nút "Send Request" → fetch với Authorization header
+- **Response Viewer:**
+  - HTTP status badge (200/403/401/500...)
+  - Thời gian phản hồi (ms)
+  - JSON được stringify đẹp với indentation
+  - Nút Copy
+- Loading spinner khi đang fetch
+
+---
+
+### 6. `pages/SecurityLab.jsx` — Demo D1-D4 ⚡
+**Layout:** 4 accordion/card panels, mỗi cái expand khi click
+
+**D1 — BOLA (Broken Object Level Authorization):**
+- Mô tả ngắn: "Truy cập resource của tenant khác"
+- 2 input: Token Tenant A, Order ID của Tenant B
+- Nút "🔴 Tấn công (Cross-tenant)" → fetch `/api/orders/{id}` với token A
+- Nút "🟢 Truy cập hợp lệ" → fetch với token đúng
+- Kết quả: HTTP badge + JSON response + giải thích kỹ thuật bên dưới
+- Giải thích: "Service kiểm tra `tenant_id` trong JWT claim vs `tenant_id` trong record → 403 nếu không khớp"
+
+**D2 — Token Replay:**
+- Mô tả: "Dùng lại token đã hết hạn"
+- Input: Expired token (gợi ý: thay đổi `exp` claim)
+- Nút "Gửi với token hết hạn" → fetch → hiện 401
+- Giải thích: "Kong JWT plugin verify `exp` claim. Token expired → 401 Unauthorized"
+
+**D3 — Webhook HMAC Forgery:**
+- Mô tả: "Giả mạo webhook với signature sai"
+- Input fields: Event payload, X-Signature (mặc định: "forged-signature-abc")
+- Toggle: "Dùng signature hợp lệ" (call `/api/billing/test-sign` trước)
+- Nút "Gửi Webhook" → POST `/api/billing/webhook`
+- Kết quả: 401 (forged) / 200 (valid)
+- Giải thích: "Billing service verify HMAC-SHA256(payload, secret) từ Vault. Sai signature → 401"
+
+**D4 — SSRF (Server-Side Request Forgery):**
+- Mô tả: "Buộc server gọi internal URL"
+- Input: Target URL (gợi ý: `http://169.254.169.254/latest/meta-data/`)
+- Dropdown quick-select: AWS Metadata, GCP Metadata, Internal 10.0.0.1, Localhost
+- Nút "Tấn công SSRF" → POST `/api/users/fetch-url`
+- Kết quả: 403 + hiện allowlist rule
+- Giải thích: "User service validate URL against blocklist: private IP ranges, metadata endpoints → 403"
+
+**Attack Log Panel (bottom):**
+- Timeline tất cả request đã gọi trong session
+- Mỗi entry: timestamp, endpoint, status badge, latency
+- Nút "Clear Log"
+- Export Log button (copy as text)
+
+---
+
+### 7. `pages/TokensPage.jsx` — Quản lý JWT
+**Phần A — Lấy token từ Keycloak:**
+- Form: Username, Password, Realm (mặc định: `shopflow`), Client ID (mặc định: `shopflow-spa`)
+- Nút "Lấy Token" → POST `http://localhost:8080/realms/{realm}/protocol/openid-connect/token`
+- Hiện: Access Token + Refresh Token (truncated, nút "Show full")
+- Nút "Dùng token này" → set vào shared state (truyền sang Services + SecurityLab)
+
+**Phần B — JWT Decoder:**
+- Textarea: paste bất kỳ JWT
+- Tự động decode khi paste (onChange)
+- Hiện 3 phần: **Header**, **Payload**, **Signature** (dạng colored JSON blocks)
+- Highlight đặc biệt: `exp`, `iat`, `tenant_id`, `sub`
+- Countdown đến hết hạn: "Hết hạn sau 4m 23s" / "⚠️ Đã hết hạn 2h trước"
+
+**Phần C — Keycloak Quick Reference:**
+- Bảng endpoints: Token URL, Realm info, Client IDs
+- Sample curl command để lấy token (copy button)
+
+---
+
+## 🐋 Docker Integration
+
+### `frontend/Dockerfile`
+```dockerfile
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+### Thêm vào `core/docker-compose.yml`
+```yaml
+shopflow-frontend:
+  build:
+    context: ../frontend
+    dockerfile: Dockerfile
+  container_name: shopflow-frontend
+  networks:
+    - private
+```
+
+### Thêm vào `core/kong/kong.yml`
+```yaml
+- name: shopflow-frontend
+  url: http://shopflow-frontend:80
+  routes:
+    - name: frontend-route
+      paths:
+        - /
+      strip_path: false
+```
+
+> [!WARNING]
+> Route `/` cho frontend phải đặt **cuối cùng** trong danh sách routes của Kong để không conflict với `/api/*` routes. Kong match theo độ ưu tiên (specificity).
+
+---
+
+## ✅ Verification Plan
+
+| Bước | Lệnh / Hành động | Kết quả mong đợi |
+|------|-------------------|-----------------|
+| Build frontend | `npm run build` | Không có lỗi, thư mục `dist/` sinh ra |
+| Docker build | `docker compose build shopflow-frontend` | Build thành công |
+| Truy cập UI | Mở `http://localhost` | Dashboard hiện ra, không blank |
+| Sidebar navigation | Click từng menu | Route chuyển, active state đúng |
+| System status | Xem footer sidebar | "Stack online" nếu Docker đang chạy |
+| API call | Services page → Send Request | JSON response hiện, status 200 |
+| Security Lab D1 | Tấn công BOLA | Hiện 403 + giải thích |
+| Security Lab D4 | Nhập metadata URL | Hiện 403 |
+| JWT Decode | Paste token | Header/Payload decode đúng |
+
+---
+
+## 🔗 Liên quan
+
+- [docker-compose.yml](file:///d:/Study/HK4/MMH/Projects/Duan/NT219.Q22.ANTT/core/docker-compose.yml)
+- [kong.yml](file:///d:/Study/HK4/MMH/Projects/Duan/NT219.Q22.ANTT/core/kong/kong.yml)
+- [index.css](file:///d:/Study/HK4/MMH/Projects/Duan/NT219.Q22.ANTT/frontend/src/index.css) *(Design System — đã tạo)*
+- [Kien-truc-he-thong-NT219.md](file:///d:/Study/HK4/MMH/Projects/Duan/NT219.Q22.ANTT/docs/books/Kien-truc-he-thong-NT219.md)
