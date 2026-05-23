@@ -32,8 +32,6 @@ docker compose ps
 ### 3) Khởi tạo Vault (KV + Transit)
 
 ```powershell
-$env:VAULT_ADDR = "http://127.0.0.1:8200"
-$env:VAULT_TOKEN = "dev-root-token"
 powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
 ```
 
@@ -59,6 +57,6 @@ curl -k --cert certs/client.crt --key certs/client.key https://localhost:8443/ap
 ## Vault lab
 
 - UI/API: http://127.0.0.1:8200
-- Token dev: `dev-root-token`
+- Root token: xem trong `core/vault/.vault-init.json`
 - Secret paths: `secret/data/jwt`, `secret/data/hmac`, `secret/data/db-credentials`
 - Transit key: `shopflow-master`

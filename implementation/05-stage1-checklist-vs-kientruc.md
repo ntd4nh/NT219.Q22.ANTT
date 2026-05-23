@@ -13,8 +13,8 @@
 - [x] Co Edge + API Gateway (Nginx + Kong)  
   Bang chung: `core/docker-compose.yml`, `core/nginx/nginx.conf`, `core/kong/kong.yml`
 
-- [~] ModSecurity WAF dung nhu kien truc canonical  
-  Hien tai: co Nginx edge, chua co rule/engine ModSecurity thuc thi ro rang.
+- [x] ModSecurity WAF dung nhu kien truc canonical  
+  Bang chung: `core/nginx/Dockerfile` (OWASP CRS), `core/nginx/modsecurity-custom.conf`.
 
 - [x] Co IdP Keycloak container  
   Bang chung: `core/docker-compose.yml`
@@ -22,11 +22,11 @@
 - [x] Co observability Prometheus + Grafana  
   Bang chung: `core/docker-compose.yml`, `core/observability/prometheus.yml`
 
-- [ ] Co Loki day du (log pipeline theo kien truc)  
-  Hien tai: chua thay service Loki trong compose.
+- [x] Co Loki day du (log pipeline theo kien truc)  
+  Bang chung: `core/docker-compose.yml`, `core/loki/loki-config.yml`, `core/promtail/promtail-config.yml`.
 
-- [ ] Co Vault OSS (Transit + KV), rotation key  
-  Hien tai: chua co service Vault va policy lien quan.
+- [x] Co Vault OSS (Transit + KV), rotation key  
+  Bang chung: `core/docker-compose.yml`, `core/vault/config.hcl`, `core/vault/init-dev.ps1`.
 
 - [x] Co skeleton app services (Order/User/Billing)  
   Bang chung: `core/docker-compose.yml` (dang o dang mock service).
@@ -57,13 +57,13 @@
 ## C. Bao cao tong hop Stage 1
 
 - Muc do hoan thanh Stage 1 (theo plan): **100%**.
-- Muc do khop voi kien truc canonical o lop nen tang: **khoang 60-65%**.
+- Muc do khop voi kien truc canonical o lop nen tang: **khoang 90-95%**.
 - Da dat: khung edge-gateway-idp-services-observability, backlog/board/DoD day du.
-- Chua dat (anh huong den do khop canonical): Vault, Loki, ModSecurity thuc chien, topology da node vat ly.
+- Chua dat (anh huong den do khop canonical): topology da node vat ly va app service thuc thi D1-D4 bang code that.
 
 ## D. Viec can lam ngay sau Stage 1 (de sat kien truc thong nhat)
 
-1. Them `vault` service + transit/kv + secret injection cho service.
-2. Them `loki` service + log shipping tu gateway/services.
-3. Nang Nginx len image co ModSecurity + base rule set.
-4. Thay app mock bang service that de enforce D1-D4 bang code.
+1. Thay app mock bang service that de enforce D1-D4 bang code.
+2. Hoan thien script do baseline vs hardened theo protocol G3.
+3. Chot bo evidence (log/metric/screenshot) cho demo va bao cao.
+4. Danh gia phuong an tach node vat ly neu can mo rong sau lab.

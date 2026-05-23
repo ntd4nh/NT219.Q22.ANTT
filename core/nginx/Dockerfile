@@ -1,4 +1,4 @@
-FROM owasp/modsecurity-crs:nginx-alpine-3.1.16
+FROM owasp/modsecurity-crs:nginx-alpine
 
 ENV BACKEND=http://kong:8000
 ENV MODSEC_RULE_ENGINE=On

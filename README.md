@@ -44,15 +44,39 @@ Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiế
 - `delivery/`: Runbook demo, checklist nộp bài, slide outline.
 - `plans/`: Kế hoạch triển khai.
 
-## Khởi chạy nhanh
+## Xem xét project hiện tại
+
+- Kiến trúc triển khai đang bám `docs/Kien-truc-he-thong-NT219.md` (canonical).
+- Mô hình chạy self-host qua Docker Compose: `Nginx + ModSecurity`, `Kong`, `Keycloak`, `Vault`, `PostgreSQL`, `Prometheus`, `Loki`, `Grafana`.
+- Mục tiêu kiểm chứng chính: D1-D4 (BOLA, token replay, webhook forgery, SSRF).
+- Trạng thái hiện tại: phù hợp demo/lab NT219, chưa tối ưu cho production HA.
+
+## Yêu cầu trước khi chạy
+
+- Docker Desktop (kèm Docker Compose v2).
+- PowerShell 7+ (khuyến nghị) hoặc Windows PowerShell.
+- Cổng trống: `80`, `443`, `8443`, `8000`, `8001`, `8080`, `8200`, `3000`, `3100`, `9090`.
+
+## Cách sử dụng
 
 ```powershell
 cd core
 docker compose up -d
 docker compose ps
+powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
 ```
 
-## Kiểm tra nhanh
+### Truy cập nhanh các dịch vụ
+
+- Edge WAF/Gateway: `http://localhost` hoặc `https://localhost`
+- Kong Admin API: `http://localhost:8001`
+- Keycloak: `http://localhost:8080` (admin/admin)
+- Vault: `http://localhost:8200` (token lấy từ `core/vault/.vault-init.json`)
+- Grafana: `http://localhost:3000` (admin/admin)
+- Prometheus: `http://localhost:9090`
+- Loki API: `http://localhost:3100`
+
+### Kiểm tra API nhanh
 
 ```powershell
 curl http://localhost/api/orders
@@ -60,9 +84,23 @@ curl http://localhost/api/users
 curl http://localhost/api/billing
 ```
 
-## Chạy kiểm thử bảo mật (D1-D4)
+### Kiểm tra log container
+
+```powershell
+cd core
+docker compose logs -f edge-nginx kong keycloak vault
+```
+
+### Chạy kiểm thử bảo mật (D1-D4)
 
 ```powershell
 cd security
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
+```
+
+### Dừng hệ thống
+
+```powershell
+cd core
+docker compose down
 ```

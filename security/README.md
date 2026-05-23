@@ -22,7 +22,7 @@
 
 ## Hạ tầng bảo mật (đã triển khai)
 
-- **Vault OSS**: KV + Transit (lab dev mode), script `core/vault/init-dev.ps1`.
+- **Vault OSS**: KV + Transit (non-dev mode, file storage), bootstrap qua `core/vault/init-dev.ps1`.
 - **ModSecurity**: edge image OWASP CRS (`core/nginx/Dockerfile`).
 - **Loki + Promtail**: log pipeline về Grafana.
 - **TLS/mTLS**: cert lab trong `core/certs/`, mTLS route `billing-mtls-proxy:8443`.

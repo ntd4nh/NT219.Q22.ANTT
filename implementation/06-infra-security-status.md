@@ -2,7 +2,7 @@
 
 ## Đã triển khai
 
-- [x] Vault OSS (dev mode) + script `core/vault/init-dev.ps1`
+- [x] Vault OSS (non-dev mode, file storage) + bootstrap script `core/vault/init-dev.ps1`
 - [x] Loki + Promtail + Grafana datasource provisioning
 - [x] ModSecurity edge (OWASP CRS nginx image)
 - [x] TLS edge (HTTPS 443) + mTLS route billing (`billing-mtls-proxy:8443`)
@@ -23,4 +23,4 @@
 
 1. Chạy `generate-certs.ps1` trước khi `docker compose build`.
 2. Port mapping: HTTP `80`, HTTPS `443`, mTLS webhook `8443`.
-3. Vault token lab: `dev-root-token` (chỉ dùng môi trường lab).
+3. Vault root token lấy từ `core/vault/.vault-init.json` sau khi bootstrap.
