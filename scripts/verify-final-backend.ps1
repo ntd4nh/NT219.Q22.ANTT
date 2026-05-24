@@ -85,7 +85,7 @@ if ($dockerOk) {
   try {
     . (Join-Path $Security "fetch-lab-tokens.ps1")
     & (Join-Path $Security "run-security-checks.ps1") 2>&1 | Tee-Object -FilePath (Join-Path $Evidence "security-checks-output.txt")
-    if ($LASTEXITCODE -eq 0) { Log "security checks 7/7" $true } else { Log "security checks 7/7" $false; $failed++ }
+    if ($LASTEXITCODE -eq 0) { Log "security checks 10/10" $true } else { Log "security checks 10/10" $false; $failed++ }
   } catch {
     Log "security checks" $false
     $failed++

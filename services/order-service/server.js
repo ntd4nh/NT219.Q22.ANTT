@@ -1,6 +1,14 @@
 import express from 'express'
 import pg from 'pg'
-import { createLogger, correlationMiddleware, requireAuth, metricsHandler, incMetric } from '../shared/index.js'
+import {
+  createLogger,
+  correlationMiddleware,
+  requireAuth,
+  tenantRateLimit,
+  metricsHandler,
+  incMetric,
+  securityAudit,
+} from '../shared/index.js'
 
 const app = express()
 const log = createLogger('order-service')
@@ -13,6 +21,9 @@ const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL || 'postgres://shopflow_app:shopflow_app@app-db:5432/shopflow',
 })
 
+const auth = requireAuth({ log })
+const rateLimit = tenantRateLimit()
+
 app.get('/metrics', metricsHandler)
 
 app.get('/health', async (_req, res) => {
@@ -24,9 +35,14 @@ app.get('/health', async (_req, res) => {
   }
 })
 
-app.get('/api/orders', requireAuth(), async (req, res) => {
+app.get('/api/orders', auth, rateLimit, async (req, res) => {
   const tenantId = req.user.tenantId
   if (!tenantId) {
+    securityAudit(log, 'AUTHZ_DENIED', {
+      correlationId: req.correlationId,
+      reason: 'MISSING_TENANT_CLAIM',
+      path: req.path,
+    })
     return res.status(403).json({ error: 'FORBIDDEN', message: 'Missing tenant_id claim' })
   }
   const { rows } = await pool.query('SELECT id, tenant_id, amount, status FROM orders WHERE tenant_id = $1', [tenantId])
@@ -34,7 +50,7 @@ app.get('/api/orders', requireAuth(), async (req, res) => {
   res.json({ orders: rows })
 })
 
-app.get('/api/orders/:orderId', requireAuth(), async (req, res) => {
+app.get('/api/orders/:orderId', auth, rateLimit, async (req, res) => {
   const tenantId = req.user.tenantId
   const { orderId } = req.params
   const { rows } = await pool.query('SELECT id, tenant_id, amount, status FROM orders WHERE id = $1', [orderId])
@@ -44,7 +60,13 @@ app.get('/api/orders/:orderId', requireAuth(), async (req, res) => {
   const order = rows[0]
   if (order.tenant_id !== tenantId) {
     incMetric('shopflow_bola_blocked_total')
-    log('BOLA_BLOCKED', { correlationId: req.correlationId, tenantId, orderTenant: order.tenant_id, orderId })
+    securityAudit(log, 'BOLA_BLOCKED', {
+      correlationId: req.correlationId,
+      tenantId,
+      orderTenant: order.tenant_id,
+      orderId,
+      reason: 'CROSS_TENANT',
+    })
     return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant access denied' })
   }
   res.json(order)

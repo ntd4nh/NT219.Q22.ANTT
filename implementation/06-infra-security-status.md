@@ -35,8 +35,19 @@
 - Verify: `scripts/verify-final-backend.ps1`
 - Evidence: `docs/evidence/`
 
+## Bonus hardening (2026-05-24)
+
+- [x] Vault runtime token least-privilege (`VAULT_APP_TOKEN`, policy `app-readonly`)
+- [x] Webhook chỉ qua mTLS ingress; edge chặn cleartext webhook
+- [x] Kong rate limit per-service + tenant quota app-layer
+- [x] Security audit logs + metrics (`TOKEN_REPLAY`, auth fail reasons)
+- [x] Alert rules mở rộng (BOLA/webhook/SSRF/replay/rate-limit)
+- [x] Security checks 10/10 (`security/run-security-checks.ps1`)
+
 ## Hạn chế còn lại (production tiếp theo)
 
 - JWT tại Kong OSS hạn chế (verify tại service).
 - D2 refresh replay store in-memory (auth-service) — cần Redis/DB cho multi-instance.
+- Kong rate limit `policy: local` — cần Redis cho multi-node.
+- mTLS full service mesh (Kong -> all services) chưa triển khai.
 - Multi-node HA: triển khai thực tế qua `core/docker-stack.yml`.

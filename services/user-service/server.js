@@ -1,7 +1,13 @@
 import express from 'express'
 import dns from 'dns/promises'
-import net from 'net'
-import { createLogger, correlationMiddleware, requireAuth, metricsHandler, incMetric } from '../shared/index.js'
+import {
+  createLogger,
+  correlationMiddleware,
+  requireAuth,
+  metricsHandler,
+  incMetric,
+  securityAudit,
+} from '../shared/index.js'
 
 const app = express()
 const log = createLogger('user-service')
@@ -43,14 +49,16 @@ async function validateUrl(rawUrl) {
 app.use(express.json())
 app.use(correlationMiddleware())
 
+const auth = requireAuth({ log })
+
 app.get('/metrics', metricsHandler)
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'user-service' }))
 
-app.get('/api/users', requireAuth(), (req, res) => {
+app.get('/api/users', auth, (req, res) => {
   res.json({ sub: req.user.sub, tenant_id: req.user.tenantId })
 })
 
-app.post('/api/users/fetch-url', requireAuth({ optional: true }), async (req, res) => {
+app.post('/api/users/fetch-url', requireAuth({ optional: true, log }), async (req, res) => {
   const url = req.body?.url
   if (!url) return res.status(400).json({ error: 'BAD_REQUEST', message: 'url required' })
 
@@ -61,7 +69,11 @@ app.post('/api/users/fetch-url', requireAuth({ optional: true }), async (req, re
   const check = await validateUrl(url)
   if (!check.ok) {
     incMetric('shopflow_ssrf_blocked_total')
-    log('SSRF_BLOCKED', { correlationId: req.correlationId, url, reason: check.reason })
+    securityAudit(log, 'SSRF_BLOCKED', {
+      correlationId: req.correlationId,
+      url,
+      reason: check.reason,
+    })
     return res.status(403).json({ error: 'SSRF_BLOCKED', reason: check.reason })
   }
 

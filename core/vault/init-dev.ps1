@@ -122,4 +122,21 @@ try {
   Write-Host "[FAIL] policy: $($_.Exception.Message)"
 }
 
+$AppTokenFile = Join-Path $PSScriptRoot ".vault-app-token"
+try {
+  $tokenResp = Invoke-VaultApi -Method "POST" -Path "auth/token/create" -Token $rootToken -Body @{
+    policies  = @("app-readonly")
+    ttl       = "768h"
+    renewable = $true
+    display_name = "shopflow-app-runtime"
+  }
+  $appToken = $tokenResp.auth.client_token
+  if (-not $appToken) { throw "Khong nhan duoc app token tu Vault." }
+  Set-Content -Path $AppTokenFile -Value $appToken -Encoding UTF8 -NoNewline
+  Write-Host "[OK] app token (app-readonly) -> $AppTokenFile"
+  Write-Host "[INFO] Dat VAULT_APP_TOKEN trong core/.env (khong dung root token cho service runtime)."
+} catch {
+  Write-Host "[FAIL] app token: $($_.Exception.Message)"
+}
+
 Write-Host "Hoan tat bootstrap Vault lab."

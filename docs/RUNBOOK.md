@@ -8,7 +8,9 @@ cd core
 docker compose build
 docker compose up -d
 powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
-# Copy root_token vào core/.env: VAULT_ROOT_TOKEN=...
+# copy .env.example -> .env
+# VAULT_APP_TOKEN từ core/vault/.vault-app-token (runtime services)
+# VAULT_ROOT_TOKEN chỉ dùng admin (không inject vào microservice)
 docker compose up -d billing-service order-service
 ```
 
@@ -17,7 +19,8 @@ docker compose up -d billing-service order-service
 | Thành phần | URL |
 |------------|-----|
 | Order | `http://localhost/api/orders` (cần Bearer) |
-| Kong Admin | `http://localhost:8001` |
+| Kong Admin | `http://127.0.0.1:8001` (localhost only) |
+| mTLS Webhook | `https://localhost:8443/api/billing/webhook` |
 | Keycloak | `http://localhost:8080` |
 | Vault | `http://localhost:8200` |
 | Grafana | `http://localhost:3000` |

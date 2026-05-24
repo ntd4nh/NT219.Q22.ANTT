@@ -1,5 +1,5 @@
 import express from 'express'
-import { createLogger, correlationMiddleware, metricsHandler, incMetric } from '../shared/index.js'
+import { createLogger, correlationMiddleware, metricsHandler, incMetric, securityAudit } from '../shared/index.js'
 
 const app = express()
 const log = createLogger('auth-service')
@@ -20,12 +20,14 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'auth-servic
 app.post('/api/auth/refresh', async (req, res) => {
   const refreshToken = req.body?.refresh_token || req.headers.authorization?.replace(/^Bearer\s+/i, '')
   if (!refreshToken) {
+    securityAudit(log, 'AUTH_FAILED', { correlationId: req.correlationId, reason: 'MISSING_REFRESH_TOKEN' })
     return res.status(401).json({ error: 'UNAUTHORIZED', message: 'refresh_token required' })
   }
 
   if (usedRefreshTokens.has(refreshToken)) {
+    incMetric('shopflow_token_replay_total')
     incMetric('shopflow_auth_failures_total')
-    log('TOKEN_REPLAY', { correlationId: req.correlationId })
+    securityAudit(log, 'TOKEN_REPLAY', { correlationId: req.correlationId, reason: 'REFRESH_REPLAY' })
     return res.status(401).json({ error: 'TOKEN_REPLAY', message: 'Refresh token already used' })
   }
 
@@ -43,6 +45,11 @@ app.post('/api/auth/refresh', async (req, res) => {
     })
     const data = await kcRes.json()
     if (!kcRes.ok) {
+      securityAudit(log, 'AUTH_FAILED', {
+        correlationId: req.correlationId,
+        reason: 'KEYCLOAK_REJECT',
+        detail: data.error || 'refresh_failed',
+      })
       return res.status(401).json({ error: 'UNAUTHORIZED', message: data.error_description || data.error })
     }
     usedRefreshTokens.add(refreshToken)

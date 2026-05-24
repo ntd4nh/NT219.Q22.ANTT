@@ -25,11 +25,46 @@ export function createLogger(serviceName) {
   }
 }
 
+export function securityAudit(log, event, fields = {}) {
+  log(event, { audit: true, ...fields })
+}
+
 export function correlationMiddleware() {
   return (req, res, next) => {
     const correlationId = req.headers['x-correlation-id'] || crypto.randomUUID()
     req.correlationId = correlationId
     res.setHeader('X-Correlation-Id', correlationId)
+    next()
+  }
+}
+
+const tenantBuckets = new Map()
+const TENANT_RPM = Number(process.env.TENANT_RATE_LIMIT_RPM || 120)
+
+export function tenantRateLimit() {
+  return (req, res, next) => {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) return next()
+
+    const now = Date.now()
+    const windowMs = 60_000
+    let bucket = tenantBuckets.get(tenantId)
+    if (!bucket || now - bucket.start >= windowMs) {
+      bucket = { start: now, count: 0 }
+      tenantBuckets.set(tenantId, bucket)
+    }
+    bucket.count += 1
+
+    if (bucket.count > TENANT_RPM) {
+      incMetric('shopflow_rate_limited_total')
+      return res.status(429).json({
+        error: 'RATE_LIMITED',
+        message: 'Tenant quota exceeded',
+        tenant_id: tenantId,
+      })
+    }
+
+    req.headers['x-tenant-id'] = tenantId
     next()
   }
 }
@@ -51,8 +86,22 @@ function getKey(header, callback) {
   })
 }
 
+function authFailure(log, req, res, reason, message) {
+  incMetric('shopflow_auth_failures_total')
+  incMetric(`shopflow_auth_failures_${reason.toLowerCase()}_total`)
+  if (log) {
+    securityAudit(log, 'AUTH_FAILED', {
+      correlationId: req.correlationId,
+      reason,
+      path: req.path,
+    })
+  }
+  return res.status(401).json({ error: 'UNAUTHORIZED', message })
+}
+
 export function requireAuth(options = {}) {
   const { optional = false } = options
+  const log = options.log || null
   const issuers = (process.env.KEYCLOAK_ISSUERS || process.env.KEYCLOAK_ISSUER || 'http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow')
     .split(',')
     .map((s) => s.trim())
@@ -63,19 +112,28 @@ export function requireAuth(options = {}) {
     const token = header.startsWith('Bearer ') ? header.slice(7) : null
     if (!token) {
       if (optional) return next()
-      return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing bearer token' })
+      return authFailure(log, req, res, 'MISSING_TOKEN', 'Missing bearer token')
     }
 
     jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, payload) => {
       if (err) {
+        const reason = err.name === 'TokenExpiredError' ? 'EXPIRED' : 'INVALID'
         incMetric('shopflow_auth_failures_total')
+        incMetric(`shopflow_auth_failures_${reason.toLowerCase()}_total`)
+        if (log) {
+          securityAudit(log, 'AUTH_FAILED', {
+            correlationId: req.correlationId,
+            reason,
+            path: req.path,
+          })
+        }
         return res.status(401).json({ error: 'UNAUTHORIZED', message: err.message })
       }
       if (!issuers.includes(payload.iss)) {
-        return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid issuer' })
+        return authFailure(log, req, res, 'INVALID_ISSUER', 'Invalid issuer')
       }
       if (process.env.KEYCLOAK_AUDIENCE && payload.aud && payload.aud !== process.env.KEYCLOAK_AUDIENCE) {
-        return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid audience' })
+        return authFailure(log, req, res, 'INVALID_AUDIENCE', 'Invalid audience')
       }
       req.user = {
         sub: payload.sub,
@@ -87,16 +145,26 @@ export function requireAuth(options = {}) {
   }
 }
 
-export async function fetchVaultSecret(path, field) {
+export async function fetchVaultSecret(path, field, options = {}) {
+  const { required = false } = options
   const addr = process.env.VAULT_ADDR
   const token = process.env.VAULT_TOKEN
-  if (!addr || !token) return null
+  if (!addr || !token) {
+    if (required) throw new Error('VAULT_ADDR and VAULT_TOKEN are required')
+    return null
+  }
   try {
     const res = await fetch(`${addr}/v1/${path}`, { headers: { 'X-Vault-Token': token } })
-    if (!res.ok) return null
+    if (!res.ok) {
+      if (required) throw new Error(`Vault read failed for ${path}: HTTP ${res.status}`)
+      return null
+    }
     const json = await res.json()
-    return json?.data?.data?.[field] ?? null
-  } catch {
+    const value = json?.data?.data?.[field] ?? null
+    if (required && !value) throw new Error(`Vault field ${field} missing at ${path}`)
+    return value
+  } catch (e) {
+    if (required) throw e
     return null
   }
 }

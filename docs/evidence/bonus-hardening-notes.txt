@@ -1,0 +1,12 @@
+Bonus security hardening (lab)
+Date: 2026-05-24
+
+Implemented:
+- Vault: app-readonly token via init-dev.ps1 -> core/vault/.vault-app-token -> VAULT_APP_TOKEN
+- mTLS: webhook forced via billing-mtls-proxy :8443; edge ModSecurity blocks cleartext POST /api/billing/webhook
+- Kong: per-service rate limits; admin API only on 127.0.0.1:8001
+- App: tenant rate limit (TENANT_RATE_LIMIT_RPM), security audit logs, TOKEN_REPLAY metric
+- Observability: expanded alerts.yml; Promtail JSON labels for event/reason/service
+
+Security gate: run-security-checks.ps1 expects 10/10 (D2 refresh+replay, mTLS D3, cleartext webhook block)
+Keycloak: KC_HOSTNAME=localhost + strict backchannel off — refresh từ auth-service (keycloak:8080) khớp token lab (localhost:8080)

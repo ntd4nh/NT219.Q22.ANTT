@@ -37,4 +37,6 @@ $env:BASE_URL_TLS = "https://localhost"
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
 
+Kỳ vọng: `Result: 10/10 checks passed.` (D2 refresh + replay; D3 qua mTLS `:8443`; edge chặn webhook cleartext).
+
 Contract: [`docs/api-contract.md`](../docs/api-contract.md)

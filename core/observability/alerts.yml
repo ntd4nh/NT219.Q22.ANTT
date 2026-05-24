@@ -9,6 +9,46 @@ groups:
         annotations:
           summary: Spike in authentication failures
 
+      - alert: TokenReplayDetected
+        expr: increase(shopflow_token_replay_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Refresh token replay detected
+
+      - alert: BOLABlockedSpike
+        expr: increase(shopflow_bola_blocked_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Spike in BOLA blocked attempts
+
+      - alert: WebhookRejectedSpike
+        expr: increase(shopflow_webhook_rejected_total[5m]) > 15
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Spike in forged webhook attempts
+
+      - alert: SSRFBlockedSpike
+        expr: increase(shopflow_ssrf_blocked_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Spike in SSRF blocked attempts
+
+      - alert: TenantRateLimited
+        expr: increase(shopflow_rate_limited_total[5m]) > 30
+        for: 2m
+        labels:
+          severity: info
+        annotations:
+          summary: Tenant rate limit triggered frequently
+
       - alert: ServiceDown
         expr: up == 0
         for: 1m

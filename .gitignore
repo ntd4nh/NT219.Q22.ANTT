@@ -15,6 +15,7 @@ logs/
 .env.*
 !.env.example
 core/vault/.vault-init.json
+core/vault/.vault-app-token
 core/.env
 *.pem
 *.key

@@ -82,6 +82,18 @@
 
 ---
 
+## 8) Bonus security hardening
+
+| # | Hạng mục | Trạng thái | Bằng chứng |
+|---|----------|------------|-----------|
+| 8.1 | Vault runtime dùng `VAULT_APP_TOKEN` (không root) | [x] | `core/vault/init-dev.ps1`, `.vault-app-token` |
+| 8.2 | Webhook chỉ qua mTLS `:8443` | [x] | `core/nginx/modsecurity-custom.conf`, `billing-mtls.conf` |
+| 8.3 | Rate limit per-service + tenant quota | [x] | `core/kong/kong.yml`, `services/shared/index.js` |
+| 8.4 | Audit log + alert D1-D4/replay | [x] | `services/*`, `core/observability/alerts.yml` |
+| 8.5 | Security checks `10/10` | [x] | `security/run-security-checks.ps1` |
+
+---
+
 ## 7) Definition of Done
 
 - [x] Runtime + Security + Ops + CI pass

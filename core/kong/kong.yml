@@ -13,6 +13,10 @@ services:
           header_name: X-Correlation-Id
           generator: uuid
           echo_downstream: true
+      - name: rate-limiting
+        config:
+          minute: 200
+          policy: local
 
   - name: user-service
     url: http://user-service:8080
@@ -26,6 +30,10 @@ services:
           header_name: X-Correlation-Id
           generator: uuid
           echo_downstream: true
+      - name: rate-limiting
+        config:
+          minute: 150
+          policy: local
 
   - name: billing-service
     url: http://billing-service:8080
@@ -39,6 +47,10 @@ services:
           header_name: X-Correlation-Id
           generator: uuid
           echo_downstream: true
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
 
   - name: auth-service
     url: http://auth-service:8080
@@ -52,6 +64,10 @@ services:
           header_name: X-Correlation-Id
           generator: uuid
           echo_downstream: true
+      - name: rate-limiting
+        config:
+          minute: 30
+          policy: local
 
 plugins:
   - name: rate-limiting

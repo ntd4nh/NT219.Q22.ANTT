@@ -1,6 +1,14 @@
 import express from 'express'
 import crypto from 'crypto'
-import { createLogger, correlationMiddleware, fetchVaultSecret, timingSafeEqualHex, metricsHandler, incMetric } from '../shared/index.js'
+import {
+  createLogger,
+  correlationMiddleware,
+  fetchVaultSecret,
+  timingSafeEqualHex,
+  metricsHandler,
+  incMetric,
+  securityAudit,
+} from '../shared/index.js'
 
 const app = express()
 const log = createLogger('billing-service')
@@ -15,8 +23,10 @@ app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf } }))
 app.use(correlationMiddleware())
 
 async function loadSecrets() {
-  const fromVault = await fetchVaultSecret('secret/data/hmac', 'webhook_secret')
+  const required = process.env.VAULT_REQUIRED === 'true'
+  const fromVault = await fetchVaultSecret('secret/data/hmac', 'webhook_secret', { required })
   if (fromVault) webhookSecret = fromVault
+  else if (required) throw new Error('Vault webhook_secret required when VAULT_REQUIRED=true')
 }
 
 function purgeNonces() {
@@ -71,7 +81,10 @@ app.post('/api/billing/webhook', (req, res) => {
   const result = verifyWebhook(req)
   if (!result.ok) {
     incMetric('shopflow_webhook_rejected_total')
-    log('WEBHOOK_REJECTED', { correlationId: req.correlationId, reason: result.reason })
+    securityAudit(log, 'WEBHOOK_REJECTED', {
+      correlationId: req.correlationId,
+      reason: result.reason,
+    })
     return res.status(401).json({ error: 'WEBHOOK_REJECTED', reason: result.reason })
   }
   log('webhook_accepted', { correlationId: req.correlationId, event: req.body?.event })
@@ -80,6 +93,11 @@ app.post('/api/billing/webhook', (req, res) => {
 
 app.get('/api/billing', (_req, res) => res.json({ service: 'billing' }))
 
-loadSecrets().then(() => {
-  app.listen(port, () => log('startup', { port }))
-})
+loadSecrets()
+  .then(() => {
+    app.listen(port, () => log('startup', { port, vaultRequired: process.env.VAULT_REQUIRED === 'true' }))
+  })
+  .catch((e) => {
+    console.error(JSON.stringify({ event: 'startup_failed', service: 'billing-service', error: e.message }))
+    process.exit(1)
+  })
