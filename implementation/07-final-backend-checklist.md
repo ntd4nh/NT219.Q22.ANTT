@@ -28,7 +28,7 @@
 
 | # | Hạng mục | Trạng thái | Bằng chứng |
 |---|----------|------------|-----------|
-| 2.1 | `run-security-checks.ps1` → **7/7** | [x] | `docs/evidence/security-checks-output.txt` |
+| 2.1 | `run-security-checks.ps1` → **layered 18/18** | [x] | `docs/evidence/security-checks-output.txt` + `security-layer-summary.txt` |
 | 2.2 | D1 cross-tenant → **403** | [x] | Code `order-service` + contract |
 | 2.3 | D2 expired token → **401** | [x] | `services/shared` JWT middleware |
 | 2.4 | D3 forged webhook → **401** | [x] | `billing-service` HMAC |
@@ -90,7 +90,7 @@
 | 8.2 | Webhook chỉ qua mTLS `:8443` | [x] | `core/nginx/modsecurity-custom.conf`, `billing-mtls.conf` |
 | 8.3 | Rate limit per-service + tenant quota | [x] | `core/kong/kong.yml`, `services/shared/index.js` |
 | 8.4 | Audit log + alert D1-D4/replay | [x] | `services/*`, `core/observability/alerts.yml` |
-| 8.5 | Security checks `10/10` | [x] | `security/run-security-checks.ps1` |
+| 8.5 | Security checks `layered 18/18` | [x] | `security/run-security-checks.ps1` |
 
 ---
 

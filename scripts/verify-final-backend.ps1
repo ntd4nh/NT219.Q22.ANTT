@@ -4,6 +4,8 @@ $Core = Join-Path $Root "core"
 $Security = Join-Path $Root "security"
 $Evidence = Join-Path $Root "docs\evidence"
 $LogFile = Join-Path $Evidence "verify-final-backend-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+$LayerSummaryFile = Join-Path $Evidence "security-layer-summary.txt"
+$SecurityOutputFile = Join-Path $Evidence "security-checks-output.txt"
 
 New-Item -ItemType Directory -Force -Path $Evidence | Out-Null
 
@@ -11,6 +13,23 @@ function Log($msg, $ok = $null) {
   $line = if ($null -eq $ok) { $msg } elseif ($ok) { "[PASS] $msg" } else { "[FAIL] $msg" }
   Write-Host $line
   Add-Content -Path $LogFile -Value $line
+}
+
+function Parse-LayerSummary {
+  param([string]$Path)
+  $layers = @{}
+  if (-not (Test-Path $Path)) { return $layers }
+  Get-Content $Path | ForEach-Object {
+    if ($_ -match '^layer=(\S+)\s+status=(\S+)\s+passed=(\d+)\s+failed=(\d+)\s+total=(\d+)') {
+      $layers[$Matches[1]] = @{
+        status = $Matches[2]
+        passed = [int]$Matches[3]
+        failed = [int]$Matches[4]
+        total  = [int]$Matches[5]
+      }
+    }
+  }
+  return $layers
 }
 
 $failed = 0
@@ -37,6 +56,7 @@ if (Select-String -Path (Join-Path $Core "docker-compose.yml") -Pattern "ealen/e
 
 $required = @(
   "docs/api-contract.md",
+  "security/layered-checks.md",
   "core/db/init.sql",
   "core/keycloak/shopflow-realm.json",
   "services/order-service/server.js",
@@ -82,19 +102,44 @@ if ($dockerOk) {
   Pop-Location
 
   Push-Location $Security
+  $env:SECURITY_LAYER_SUMMARY_FILE = $LayerSummaryFile
   try {
-    . (Join-Path $Security "fetch-lab-tokens.ps1")
-    & (Join-Path $Security "run-security-checks.ps1") 2>&1 | Tee-Object -FilePath (Join-Path $Evidence "security-checks-output.txt")
-    if ($LASTEXITCODE -eq 0) { Log "security checks 10/10" $true } else { Log "security checks 10/10" $false; $failed++ }
+    & (Join-Path $Security "run-security-checks.ps1") 2>&1 | Tee-Object -FilePath $SecurityOutputFile
+    $secExit = $LASTEXITCODE
+    if ($secExit -eq 0) { Log "security checks (all layers)" $true } else { Log "security checks (all layers)" $false; $failed++ }
   } catch {
     Log "security checks" $false
     $failed++
+    $secExit = 1
   } finally {
     Pop-Location
+  }
+
+  Log "=== Layer gate (from security-layer-summary.txt) ==="
+  $layerMap = Parse-LayerSummary -Path $LayerSummaryFile
+  $criticalLayers = @("Prereq", "EdgeIngress")
+  foreach ($layerName in @("Prereq", "EdgeIngress", "Gateway", "Service", "Auth", "mTLS", "Observability")) {
+    if (-not $layerMap.ContainsKey($layerName)) {
+      Log "layer $layerName (no data)" $false
+      if ($criticalLayers -contains $layerName) { $failed++ }
+      continue
+    }
+    $L = $layerMap[$layerName]
+    $ok = $L.status -eq "PASS"
+    Log "layer $layerName $($L.status) ($($L.passed)/$($L.total))" $ok
+    if (-not $ok -and $L.status -ne "SKIP") { $failed++ }
+  }
+
+  $prereqFail = $layerMap.ContainsKey("Prereq") -and $layerMap["Prereq"].status -eq "FAIL"
+  $edgeFail = $layerMap.ContainsKey("EdgeIngress") -and $layerMap["EdgeIngress"].status -eq "FAIL"
+  if ($prereqFail -or $edgeFail) {
+    Log 'CRITICAL: Prereq/EdgeIngress failed - fix certs, Keycloak, or edge-nginx before D1-D4 triage' $false
   }
 }
 
 Log "=== Summary ==="
 Log "Log: $LogFile"
+Log "Security output: $SecurityOutputFile"
+Log "Layer summary: $LayerSummaryFile"
 if ($failed -gt 0) { Log "FAILED: $failed check(s)" $false; exit 1 }
 Log "All automated checks passed" $true

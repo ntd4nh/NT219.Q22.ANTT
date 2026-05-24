@@ -11,6 +11,7 @@
 ## D3 - Webhook forgery
 - Verify `X-Signature`, `X-Timestamp`, `X-Nonce`.
 - Signature: `HMAC_SHA256(secret, timestamp + "." + nonce + "." + body)`.
+- Lab: chỉ qua mTLS ingress `:8443`.
 
 ## D4 - SSRF
 - URL allowlist domain.
@@ -20,23 +21,51 @@
   - `::1`
   - private range RFC1918.
 
-## Hạ tầng bảo mật (đã triển khai)
+## Kiểm thử theo lớp
 
-- **Vault OSS**: KV + Transit (non-dev mode, file storage), bootstrap qua `core/vault/init-dev.ps1`.
-- **ModSecurity**: edge image OWASP CRS (`core/nginx/Dockerfile`).
-- **Loki + Promtail**: log pipeline về Grafana.
-- **TLS/mTLS**: cert lab trong `core/certs/`, mTLS route `billing-mtls-proxy:8443`.
+Ma trận đầy đủ: [`layered-checks.md`](layered-checks.md)
+
+| Layer | Nội dung |
+|-------|----------|
+| Prereq | Token lab, client cert, Keycloak reachable |
+| EdgeIngress | TLS edge, chặn webhook cleartext (403) |
+| Gateway | Kong route: orders 401, billing 200 |
+| Service | D1 BOLA + D4 SSRF |
+| Auth | D2 expired + refresh replay |
+| mTLS | D3 forged 401, no client cert blocked |
+| Observability | Prometheus/Loki ready |
 
 ## Chạy kiểm thử
 
 ```powershell
 cd security
-. .\fetch-lab-tokens.ps1
 $env:BASE_URL = "http://localhost"
 $env:BASE_URL_TLS = "https://localhost"
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
 
-Kỳ vọng: `Result: 10/10 checks passed.` (D2 refresh + replay; D3 qua mTLS `:8443`; edge chặn webhook cleartext).
+Kỳ vọng:
+- Mỗi layer: `[STAGE PASS] <Layer> (n/n)`
+- Tổng: `Result: <passed>/<total> checks passed.`
+- File tóm tắt: `docs/evidence/security-layer-summary.txt`
+
+Gate tổng:
+
+```powershell
+cd ..
+.\scripts\verify-final-backend.ps1
+```
+
+## Lỗi nhanh theo layer
+
+| Layer fail | Kiểm tra |
+|------------|----------|
+| Prereq | Keycloak `:8080`, `core/certs/client.crt` |
+| EdgeIngress | `edge-nginx` + ModSecurity, TLS cert |
+| Gateway | `kong` + `docker compose ps` |
+| Service | JWT `tenant_id`, seed `order-tenant-b` |
+| Auth | `KC_HOSTNAME=localhost`, token mới |
+| mTLS | `billing-mtls-proxy:8443`, curl image |
+| Observability | Prometheus `:9090`, Loki `:3100` |
 
 Contract: [`docs/api-contract.md`](../docs/api-contract.md)

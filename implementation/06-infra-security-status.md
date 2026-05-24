@@ -42,7 +42,7 @@
 - [x] Kong rate limit per-service + tenant quota app-layer
 - [x] Security audit logs + metrics (`TOKEN_REPLAY`, auth fail reasons)
 - [x] Alert rules mở rộng (BOLA/webhook/SSRF/replay/rate-limit)
-- [x] Security checks 10/10 (`security/run-security-checks.ps1`)
+- [x] Security checks layered 18/18 (`security/run-security-checks.ps1`)
 
 ## Hạn chế còn lại (production tiếp theo)
 

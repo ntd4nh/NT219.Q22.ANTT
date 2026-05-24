@@ -2,6 +2,8 @@
 
 Single source of truth for backend, frontend, and `security/run-security-checks.ps1`.
 
+Layered test matrix: [`security/layered-checks.md`](../security/layered-checks.md).
+
 ## Base URLs
 
 | Environment | Edge | Kong direct |

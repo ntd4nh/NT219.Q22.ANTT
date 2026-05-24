@@ -46,7 +46,7 @@ curl -H "Authorization: Bearer $env:VALID_TOKEN" http://localhost/api/orders
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
 
-Kỳ vọng: `Result: 10/10 checks passed.`
+Kỳ vọng: mỗi layer `[STAGE PASS]` và `Result: <n>/<n> checks passed.` — xem `security/layered-checks.md`.
 
 ## Security hardening (bonus)
 

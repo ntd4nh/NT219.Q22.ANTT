@@ -14,5 +14,5 @@ Xác nhận có thể quay về phiên bản ổn định và D1–D4 vẫn pass
 
 ## Pass criteria
 - Stack healthy
-- Security script ≥ 7/7 (hoặc ghi rõ mục fail + lý do)
+- Security script pass layered checks (hiện tại: 18/18) hoặc ghi rõ layer fail + lý do
 - Thời gian rollback < 15 phút (ghi thực tế)

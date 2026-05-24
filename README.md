@@ -49,7 +49,7 @@ Hệ thống backend + frontend kiểm thử bảo mật API (D1-D4), self-host 
 
 - Kiến trúc bám `docs/books/Kien-truc-he-thong-NT219.md`.
 - Backend final checklist đã chốt pass: `implementation/07-final-backend-checklist.md`.
-- Security gate pass `7/7`: `docs/evidence/security-checks-output.txt`.
+- Security gate pass `layered 18/18`: `docs/evidence/security-checks-output.txt` + `docs/evidence/security-layer-summary.txt`.
 - Evidence + sign-off: `docs/evidence/`, `delivery/04-backend-signoff.md`.
 - Frontend đã khớp contract backend tại `frontend/`.
 

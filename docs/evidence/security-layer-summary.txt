@@ -1,0 +1,10 @@
+﻿generated=2026-05-24T15:30:32.7699776+07:00
+passed=18
+failed=0
+layer=Prereq status=PASS passed=4 failed=0 total=4
+layer=EdgeIngress status=PASS passed=2 failed=0 total=2
+layer=Gateway status=PASS passed=2 failed=0 total=2
+layer=Service status=PASS passed=3 failed=0 total=3
+layer=Auth status=PASS passed=3 failed=0 total=3
+layer=mTLS status=PASS passed=2 failed=0 total=2
+layer=Observability status=PASS passed=2 failed=0 total=2

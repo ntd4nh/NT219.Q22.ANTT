@@ -27,9 +27,19 @@ docker compose up -d billing-service order-service
 
 ```powershell
 cd security
-. .\fetch-lab-tokens.ps1
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
+
+Script tự lấy token mới và chạy **7 lớp** (Prereq → EdgeIngress → Gateway → Service → Auth → mTLS → Observability). Chi tiết: [`security/layered-checks.md`](../security/layered-checks.md).
+
+Gate tổng + báo cáo theo layer:
+
+```powershell
+cd ..
+.\scripts\verify-final-backend.ps1
+```
+
+Đọc `docs/evidence/security-layer-summary.txt` — nếu **Prereq** hoặc **EdgeIngress** `FAIL`, xử lý hạ tầng trước khi debug D1–D4.
 
 ## Sự cố thường gặp
 
@@ -44,8 +54,17 @@ powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
 - Kiểm tra seed `core/db/init.sql` có `order-tenant-b`.
 
 ### D3 webhook luôn 401
+- Gọi qua **mTLS** `https://localhost:8443/api/billing/webhook` (không qua `:80`).
 - Đồng bộ `HMAC_SECRET` với Vault `secret/data/hmac`.
 - Header: `X-Signature: sha256=<hex>`, `X-Timestamp`, `X-Nonce` unique.
+
+### Security check fail layer EdgeIngress
+- Rebuild `edge-nginx` sau sửa ModSecurity.
+- Cleartext webhook phải trả **403** (rule 900010).
+
+### Security check fail layer Prereq
+- Keycloak chạy, `fetch-lab-tokens.ps1` OK.
+- Chạy `core/certs/generate-certs.ps1` nếu thiếu client cert.
 
 ### JWT 401 từ service
 - Token phải có `iss` khớp `KEYCLOAK_ISSUERS` (localhost hoặc keycloak hostname).

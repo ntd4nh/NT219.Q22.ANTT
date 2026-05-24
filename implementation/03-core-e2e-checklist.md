@@ -10,7 +10,7 @@
 - [x] Route `/api/orders`, `/api/users`, `/api/billing`, `/api/auth`
 - [x] Realm `shopflow` + users tenant-a/b (`core/keycloak/shopflow-realm.json`)
 - [x] JWT verify (`iss`, `exp`, `tenant_id`) trong code
-- [~] D1-D4 automation script 7/7 (chạy `security/run-security-checks.ps1`)
+- [~] D1-D4 automation script layered 18/18 (chạy `security/run-security-checks.ps1`)
 
 ## Evidence
 

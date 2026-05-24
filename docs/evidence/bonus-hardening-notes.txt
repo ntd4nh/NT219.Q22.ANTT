@@ -8,5 +8,5 @@ Implemented:
 - App: tenant rate limit (TENANT_RATE_LIMIT_RPM), security audit logs, TOKEN_REPLAY metric
 - Observability: expanded alerts.yml; Promtail JSON labels for event/reason/service
 
-Security gate: run-security-checks.ps1 expects 10/10 (D2 refresh+replay, mTLS D3, cleartext webhook block)
+Security gate: run-security-checks.ps1 layered 18/18 (7 layers: Prereq, EdgeIngress, Gateway, Service, Auth, mTLS, Observability)
 Keycloak: KC_HOSTNAME=localhost + strict backchannel off — refresh từ auth-service (keycloak:8080) khớp token lab (localhost:8080)
