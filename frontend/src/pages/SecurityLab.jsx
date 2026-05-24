@@ -25,10 +25,11 @@ const jwtStatus = (token) => {
 
 const addAttackLog = (logs, entry) => [entry, ...logs].slice(0, 20)
 
-export default function SecurityLab({ bearerToken }) {
+export default function SecurityLab({ bearerToken, refreshToken }) {
   const [openPanels, setOpenPanels] = useState({ d1: true, d2: false, d3: false, d4: false })
   const [orderId, setOrderId] = useState('order-tenant-b-001')
   const [expiredToken, setExpiredToken] = useState('')
+  const [refreshTokenInput, setRefreshTokenInput] = useState(refreshToken || '')
   const [webhookPayload, setWebhookPayload] = useState('{"event":"payment","amount":100}')
   const [signature, setSignature] = useState('sha256=forged-bad-signature')
   const [validHmac, setValidHmac] = useState(false)
@@ -39,6 +40,16 @@ export default function SecurityLab({ bearerToken }) {
 
   const tokenState = useMemo(() => jwtStatus(bearerToken), [bearerToken])
 
+  const expectedStatus = (label, status) => {
+    if (label === 'D1 Cross-tenant') return status === 403
+    if (label === 'D1 Valid') return status === 200
+    if (label === 'D2 Expired') return status === 401
+    if (label === 'D2 Refresh Replay #2') return status === 401
+    if (label === 'D3 Webhook') return validHmac ? status >= 200 && status < 300 : status === 401
+    if (label === 'D4 SSRF') return status === 403
+    return status >= 200 && status < 300
+  }
+
   const fireRequest = async ({ method, url, options, label }) => {
     setLoading(true)
     const start = Date.now()
@@ -48,12 +59,22 @@ export default function SecurityLab({ bearerToken }) {
       const data = await res.json().catch(() => null)
       const result = { status: res.status, latency, data, error: res.ok ? null : data || 'Request failed' }
       setResponse(result)
-      setAttackLog(addAttackLog(attackLog, { time: new Date().toLocaleTimeString(), method, url, status: res.status, latency, label }))
+      setAttackLog((current) =>
+        addAttackLog(current, {
+          time: new Date().toLocaleTimeString(),
+          method,
+          url,
+          status: res.status,
+          latency,
+          label,
+          ok: expectedStatus(label, res.status),
+        }),
+      )
     } catch (error) {
       const latency = Date.now() - start
       const result = { status: 'ERR', latency, data: null, error: error.message }
       setResponse(result)
-      setAttackLog(addAttackLog(attackLog, { time: new Date().toLocaleTimeString(), method, url, status: 'ERR', latency, label }))
+      setAttackLog((current) => addAttackLog(current, { time: new Date().toLocaleTimeString(), method, url, status: 'ERR', latency, label, ok: false }))
     } finally {
       setLoading(false)
     }
@@ -82,8 +103,48 @@ export default function SecurityLab({ bearerToken }) {
       method: 'GET',
       url: '/api/orders',
       options: { headers: expiredToken ? { Authorization: `Bearer ${expiredToken}` } : {} },
-      label: 'D2 Replay',
+      label: 'D2 Expired',
     })
+  }
+
+  const handleD2RefreshReplay = async () => {
+    if (!refreshTokenInput) return
+    setLoading(true)
+    const body = JSON.stringify({ refresh_token: refreshTokenInput })
+    const headers = { 'Content-Type': 'application/json' }
+    const start = Date.now()
+    try {
+      const first = await fetch('/api/auth/refresh', { method: 'POST', headers, body })
+      const firstData = await first.json().catch(() => null)
+      const second = await fetch('/api/auth/refresh', { method: 'POST', headers, body })
+      const secondData = await second.json().catch(() => null)
+      const latency = Date.now() - start
+      setResponse({
+        status: second.status,
+        latency,
+        data: { first: { status: first.status, data: firstData }, second: { status: second.status, data: secondData } },
+        error: second.ok ? null : secondData || 'Request failed',
+      })
+      setAttackLog((current) =>
+        addAttackLog(current, {
+          time: new Date().toLocaleTimeString(),
+          method: 'POSTx2',
+          url: '/api/auth/refresh',
+          status: second.status,
+          latency,
+          label: 'D2 Refresh Replay #2',
+          ok: second.status === 401,
+        }),
+      )
+    } catch (error) {
+      const latency = Date.now() - start
+      setResponse({ status: 'ERR', latency, data: null, error: error.message })
+      setAttackLog((current) =>
+        addAttackLog(current, { time: new Date().toLocaleTimeString(), method: 'POSTx2', url: '/api/auth/refresh', status: 'ERR', latency, label: 'D2 Refresh Replay #2', ok: false }),
+      )
+    } finally {
+      setLoading(false)
+    }
   }
 
   const fetchValidSignature = async () => {
@@ -108,7 +169,7 @@ export default function SecurityLab({ bearerToken }) {
         headers: {
           'Content-Type': 'application/json',
           'X-Signature': signature,
-          'X-Timestamp': String(Date.now()),
+          'X-Timestamp': String(Math.floor(Date.now() / 1000)),
           'X-Nonce': Math.random().toString(36).slice(2),
         },
         body: webhookPayload,
@@ -175,9 +236,16 @@ export default function SecurityLab({ bearerToken }) {
                 Expired token
                 <textarea value={expiredToken} onChange={(event) => setExpiredToken(event.target.value)} placeholder="Paste expired token" />
               </label>
-              <button className="button-warning" type="button" onClick={handleD2} disabled={loading}>⚠️ Gửi với token hết hạn</button>
+              <label>
+                Refresh token
+                <textarea value={refreshTokenInput} onChange={(event) => setRefreshTokenInput(event.target.value)} placeholder="Paste refresh token từ Tokens page" />
+              </label>
+              <div className="button-row">
+                <button className="button-warning" type="button" onClick={handleD2} disabled={loading}>⚠️ Test access token hết hạn</button>
+                <button className="button-danger" type="button" onClick={handleD2RefreshReplay} disabled={loading || !refreshTokenInput}>💀 Test refresh replay (lần 2)</button>
+              </div>
               <div className="explain-box">
-                Kong JWT Plugin verify <strong>exp</strong> claim. Token hết hạn → 401 Unauthorized.
+                D2 gồm 2 case: access token hết hạn (401) và refresh replay trên <strong>/api/auth/refresh</strong> (lần 2 phải 401).
               </div>
             </div>
           ) : null}
@@ -252,7 +320,7 @@ export default function SecurityLab({ bearerToken }) {
             attackLog.map((item, index) => (
               <div key={`${item.time}-${index}`} className="log-item">
                 <span className={`log-icon ${item.status === 200 ? 'ok' : item.status === 'ERR' ? 'err' : 'fail'}`}>
-                  {item.status === 200 ? '✅' : '❌'}
+                  {item.ok ? '✅' : '❌'}
                 </span>
                 <span>{item.time}</span>
                 <span>{item.label}</span>

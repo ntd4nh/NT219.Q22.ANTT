@@ -1,8 +1,8 @@
 # Crypto Project - NT219
 
-Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiến trúc NT219.
+Hệ thống backend + frontend kiểm thử bảo mật API (D1-D4), self-host theo kiến trúc NT219.
 
-![Trạng thái](https://img.shields.io/badge/Tr%E1%BA%A1ng%20th%C3%A1i-In%20Progress-orange)
+![Trạng thái](https://img.shields.io/badge/Tr%E1%BA%A1ng%20th%C3%A1i-Final%20Backend%20Passed-brightgreen)
 ![Môn học](https://img.shields.io/badge/M%C3%B4n-NT219-blue)
 ![Loại dự án](https://img.shields.io/badge/Project-API%20Security-success)
 
@@ -19,9 +19,9 @@ Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiế
 
 ## Mục tiêu
 
-- Triển khai mô hình API security với Nginx, Kong, Keycloak.
-- Mô phỏng và kiểm chứng D1-D4 (BOLA, token replay, webhook forgery, SSRF).
-- Tổng hợp kết quả baseline vs hardened cho G3.
+- Triển khai API security stack với Nginx + ModSecurity, Kong, Keycloak, Vault, PostgreSQL.
+- Kiểm chứng D1-D4 (BOLA, token replay, webhook forgery, SSRF) bằng script tự động.
+- Đồng bộ frontend Security Dashboard với backend contract.
 
 ## Thông tin nhóm
 
@@ -45,13 +45,13 @@ Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiế
 - `delivery/`: Runbook demo, checklist nộp bài, slide outline.
 - `plans/`: Kế hoạch triển khai.
 
-## Xem xét project hiện tại
+## Trạng thái hiện tại
 
-- Kiến trúc triển khai đang bám `docs/books/Kien-truc-he-thong-NT219.md` (canonical).
-- Backend: microservices thật + contract `docs/api-contract.md`.
-- Mô hình chạy self-host qua Docker Compose: `Nginx + ModSecurity`, `Kong`, `Keycloak`, `Vault`, `PostgreSQL`, `Prometheus`, `Loki`, `Grafana`.
-- Mục tiêu kiểm chứng chính: D1-D4 (BOLA, token replay, webhook forgery, SSRF).
-- Trạng thái hiện tại: phù hợp demo/lab NT219, chưa tối ưu cho production HA.
+- Kiến trúc bám `docs/books/Kien-truc-he-thong-NT219.md`.
+- Backend final checklist đã chốt pass: `implementation/07-final-backend-checklist.md`.
+- Security gate pass `7/7`: `docs/evidence/security-checks-output.txt`.
+- Evidence + sign-off: `docs/evidence/`, `delivery/04-backend-signoff.md`.
+- Frontend đã khớp contract backend tại `frontend/`.
 
 ## Yêu cầu trước khi chạy
 
@@ -59,7 +59,7 @@ Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiế
 - PowerShell 7+ (khuyến nghị) hoặc Windows PowerShell.
 - Cổng trống: `80`, `443`, `8443`, `8000`, `8001`, `8080`, `8200`, `3000`, `3100`, `9090`.
 
-## Cách sử dụng
+## Quick Start (Backend)
 
 ```powershell
 cd core
@@ -70,6 +70,26 @@ powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
 # copy .env.example -> .env, điền VAULT_ROOT_TOKEN
 docker compose up -d order-service billing-service
 ```
+
+## Verify Backend Final
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-final-backend.ps1
+```
+
+Kết quả và bằng chứng nằm tại `docs/evidence/`.
+
+## Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+- Vite proxy: `/api` -> `http://localhost`
+- Token endpoint: `http://localhost:8080/realms/shopflow/protocol/openid-connect/token`
+- Security Lab đã bám case D1-D4 theo `docs/api-contract.md`
 
 ### Truy cập nhanh các dịch vụ
 
@@ -100,16 +120,9 @@ docker compose logs -f edge-nginx kong keycloak vault
 
 ```powershell
 cd security
+. .\fetch-lab-tokens.ps1
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
-
-### Checklist chốt backend
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\verify-final-backend.ps1
-```
-
-Chi tiết: [`implementation/07-final-backend-checklist.md`](implementation/07-final-backend-checklist.md)
 
 ### Dừng hệ thống
 

@@ -44,7 +44,6 @@ export default function Services({ bearerToken }) {
   const tokenStatus = useMemo(() => {
     if (!tokenInput) return 'none'
     if (!tokenPayload) return 'invalid'
-    if (tokenPayload.exp && Date.now() / 1000 > tokenPayload.exp) return 'expired'
     return 'valid'
   }, [tokenInput, tokenPayload])
 

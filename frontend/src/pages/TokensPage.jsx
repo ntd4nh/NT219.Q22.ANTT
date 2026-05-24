@@ -11,7 +11,7 @@ const base64UrlDecode = (value) => {
         .map((c) => `%${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
         .join(''),
     )
-  } catch (error) {
+  } catch {
     return null
   }
 }
@@ -43,21 +43,14 @@ const decodeToken = (token) => {
   }
 }
 
-export default function TokensPage({ onTokenChange }) {
-  const [form, setForm] = useState({ username: '', password: '', realm: 'shopflow', clientId: 'shopflow-spa' })
+export default function TokensPage({ onTokensChange }) {
+  const [form, setForm] = useState({ username: 'tenant-a-user', password: 'password123', realm: 'shopflow', clientId: 'shopflow-spa' })
   const [tokenResult, setTokenResult] = useState(null)
   const [showFull, setShowFull] = useState(false)
   const [jwtInput, setJwtInput] = useState('')
-  const [decodeError, setDecodeError] = useState('')
+  const tokenEndpoint = `http://localhost:8080/realms/${form.realm}/protocol/openid-connect/token`
 
-  const decoded = useMemo(() => {
-    try {
-      return decodeToken(jwtInput)
-    } catch (error) {
-      setDecodeError('JWT không hợp lệ')
-      return null
-    }
-  }, [jwtInput])
+  const decoded = useMemo(() => decodeToken(jwtInput), [jwtInput])
 
   const expiry = decoded?.payload?.exp ? formatExpiry(decoded.payload.exp) : null
 
@@ -75,7 +68,7 @@ export default function TokensPage({ onTokenChange }) {
         username: form.username,
         password: form.password,
       })
-      const response = await fetch(`http://localhost:8080/realms/${form.realm}/protocol/openid-connect/token`, {
+      const response = await fetch(tokenEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
@@ -134,7 +127,11 @@ export default function TokensPage({ onTokenChange }) {
                     <label>Refresh Token</label>
                     <div className="token-value small">{tokenResult.refresh_token}</div>
                   </div>
-                  <button className="button-secondary" type="button" onClick={() => onTokenChange(tokenResult.access_token)}>
+                  <button
+                    className="button-secondary"
+                    type="button"
+                    onClick={() => onTokensChange({ accessToken: tokenResult.access_token, refreshToken: tokenResult.refresh_token })}
+                  >
                     📋 Dùng token này
                   </button>
                 </>
@@ -146,9 +143,9 @@ export default function TokensPage({ onTokenChange }) {
           <h2>JWT Decoder</h2>
           <label>
             Paste JWT
-            <textarea value={jwtInput} onChange={(event) => { setDecodeError(''); setJwtInput(event.target.value) }} placeholder="Paste JWT của bạn vào đây" />
+            <textarea value={jwtInput} onChange={(event) => setJwtInput(event.target.value)} placeholder="Paste JWT của bạn vào đây" />
           </label>
-          {decodeError ? <div className="notice error">{decodeError}</div> : null}
+          {jwtInput && !decoded ? <div className="notice error">JWT không hợp lệ</div> : null}
           {decoded ? (
             <div className="jwt-boxes">
               <div className="jwt-block blue">
@@ -177,7 +174,7 @@ export default function TokensPage({ onTokenChange }) {
       <div className="quick-reference panel">
         <h2>Quick Reference</h2>
         <div className="reference-grid">
-          <div><strong>Token URL</strong><span>http://localhost:8080/realms/shopflow/protocol/openid-connect/token</span></div>
+          <div><strong>Token URL</strong><span>{tokenEndpoint}</span></div>
           <div><strong>Realm</strong><span>shopflow</span></div>
           <div><strong>Client</strong><span>shopflow-spa, shopflow-s2s</span></div>
         </div>

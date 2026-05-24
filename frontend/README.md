@@ -1,16 +1,19 @@
-# React + Vite
+# ShopFlow Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Run
 
-Currently, two official plugins are available:
+```powershell
+cd frontend
+npm install
+npm run dev
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Backend integration
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Dev server đã proxy `'/api' -> 'http://localhost'` (edge-nginx).
+- Token lấy từ Keycloak: `http://localhost:8080/realms/shopflow/protocol/openid-connect/token`.
+- Security Lab khớp backend contract:
+  - D1: cross-tenant orders -> 403
+  - D2: expired access token -> 401, refresh replay lần 2 -> 401
+  - D3: forged webhook -> 401
+  - D4: SSRF metadata/private URL -> 403

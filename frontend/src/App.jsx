@@ -15,7 +15,7 @@ const navigation = [
 ]
 
 function App() {
-  const [bearerToken, setBearerToken] = useState('')
+  const [authTokens, setAuthTokens] = useState({ accessToken: '', refreshToken: '' })
 
   return (
     <BrowserRouter>
@@ -34,7 +34,7 @@ function App() {
           </nav>
           <div className="token-summary">
             <div className="summary-title">Bearer token</div>
-            <div className="summary-value">{bearerToken ? `${bearerToken.slice(0, 24)}...` : 'Chưa có token'}</div>
+            <div className="summary-value">{authTokens.accessToken ? `${authTokens.accessToken.slice(0, 24)}...` : 'Chưa có token'}</div>
           </div>
         </aside>
         <div className="app-main">
@@ -42,9 +42,9 @@ function App() {
           <main className="app-content">
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/services" element={<Services bearerToken={bearerToken} />} />
-              <Route path="/security-lab" element={<SecurityLab bearerToken={bearerToken} />} />
-              <Route path="/tokens" element={<TokensPage onTokenChange={setBearerToken} />} />
+              <Route path="/services" element={<Services bearerToken={authTokens.accessToken} />} />
+              <Route path="/security-lab" element={<SecurityLab bearerToken={authTokens.accessToken} refreshToken={authTokens.refreshToken} />} />
+              <Route path="/tokens" element={<TokensPage onTokensChange={setAuthTokens} />} />
               <Route path="*" element={<Dashboard />} />
             </Routes>
           </main>

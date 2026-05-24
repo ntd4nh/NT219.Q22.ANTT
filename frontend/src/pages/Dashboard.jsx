@@ -10,9 +10,9 @@ const cards = [
 ]
 
 const services = [
-  { name: 'Orders', path: '/api/orders', status: 'unknown' },
-  { name: 'Users', path: '/api/users', status: 'unknown' },
-  { name: 'Billing', path: '/api/billing', status: 'unknown' },
+  { name: 'Orders', path: '/api/orders', method: 'GET', expected: [200, 401] },
+  { name: 'Users', path: '/api/users', method: 'GET', expected: [200, 401] },
+  { name: 'Billing', path: '/api/billing', method: 'GET', expected: [200] },
 ]
 
 const stack = [
@@ -25,21 +25,19 @@ const stack = [
 ]
 
 export default function Dashboard() {
-  const [statusState, setStatusState] = useState(services)
+  const [statusState, setStatusState] = useState(services.map((item) => ({ ...item, status: 'unknown' })))
   const [serviceInfo, setServiceInfo] = useState({})
 
   const handlePing = async (item) => {
-    const start = Date.now()
     const url = item.path
     setServiceInfo((current) => ({ ...current, [item.name]: { loading: true } }))
     try {
-      const response = await fetch(url, { method: 'HEAD' })
-      const latency = Date.now() - start
-      setServiceInfo((current) => ({ ...current, [item.name]: { loading: false, status: response.ok ? 'ok' : 'error', latency, code: response.status } }))
-      setStatusState((current) => current.map((service) => (service.name === item.name ? { ...service, status: response.ok ? 'online' : 'offline' } : service)))
-    } catch (error) {
-      const latency = Date.now() - start
-      setServiceInfo((current) => ({ ...current, [item.name]: { loading: false, status: 'error', latency, code: 'ERR' } }))
+      const response = await fetch(url, { method: item.method })
+      const isExpected = item.expected.includes(response.status)
+      setServiceInfo((current) => ({ ...current, [item.name]: { loading: false, status: isExpected ? 'ok' : 'error', latency: null, code: response.status } }))
+      setStatusState((current) => current.map((service) => (service.name === item.name ? { ...service, status: isExpected ? 'online' : 'offline' } : service)))
+    } catch {
+      setServiceInfo((current) => ({ ...current, [item.name]: { loading: false, status: 'error', latency: null, code: 'ERR' } }))
       setStatusState((current) => current.map((service) => (service.name === item.name ? { ...service, status: 'offline' } : service)))
     }
   }
@@ -99,13 +97,13 @@ export default function Dashboard() {
                 <div className="service-header">
                   <div>
                     <strong>{item.name}</strong>
-                    <div className="service-url">{item.path}</div>
+                    <div className="service-url">{item.method} {item.path}</div>
                   </div>
                   <div className={`service-dot ${item.status}`}></div>
                 </div>
                 <button className="button-secondary" onClick={() => handlePing(item)} disabled={info.loading}>Ping</button>
                 <div className="service-meta">
-                  {info.loading ? 'Đang ping...' : info.latency ? `Latency ${info.latency}ms • ${info.code}` : 'Chưa ping'}
+                  {info.loading ? 'Đang ping...' : info.code ? `${info.code}` : 'Chưa ping'}
                 </div>
               </div>
             )
