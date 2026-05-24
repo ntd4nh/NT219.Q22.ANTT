@@ -2,11 +2,15 @@
   padding: 24px;
 }
 
+.dashboard-page h1 {
+  margin-bottom: 22px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 20px;
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 
 .architecture-panel,
@@ -15,9 +19,15 @@
   margin-bottom: 24px;
 }
 
+.architecture-panel h2,
+.status-panel h2,
+.security-stack h2 {
+  margin-bottom: 16px;
+}
+
 .architecture-flow {
   display: grid;
-  gap: 20px;
+  gap: 18px;
 }
 
 .flow-row,
@@ -33,9 +43,9 @@
 .service-node {
   flex: 1 1 180px;
   min-width: 180px;
-  padding: 18px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.85);
+  padding: 20px;
+  border-radius: 22px;
+  background: var(--surface-strong);
   border: 1px solid var(--border);
 }
 
@@ -56,34 +66,28 @@
   position: absolute;
   inset: 50% 8% auto 8%;
   border-top: 2px dashed var(--accent);
-  animation: dash-move 2s linear infinite;
+  opacity: 0.65;
 }
 
 .flow-lines .line.secondary {
   top: 70%;
-  border-color: rgba(170, 59, 255, 0.35);
-}
-
-@keyframes dash-move {
-  to {
-    background-position: 100% 0;
-  }
+  border-color: rgba(34, 197, 94, 0.28);
 }
 
 .service-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .service-card {
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.9);
+  border-radius: 24px;
+  background: var(--surface-strong);
   border: 1px solid var(--border);
-  padding: 18px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .service-header {
@@ -121,14 +125,21 @@
   padding: 10px 16px;
   border-radius: 999px;
   cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.button-secondary:hover,
+.button-primary:hover {
+  transform: translateY(-1px);
 }
 
 .button-secondary {
   background: var(--code-bg);
+  color: var(--text-h);
 }
 
 .button-primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color: white;
 }
 
@@ -141,15 +152,15 @@
   display: grid;
   grid-template-columns: 1.2fr 1.6fr 0.9fr 1fr;
   gap: 10px;
-  padding: 14px 18px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: var(--surface-strong);
   border: 1px solid var(--border);
 }
 
 .badge {
   display: inline-flex;
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: 999px;
   background: var(--code-bg);
   font-size: 0.95rem;

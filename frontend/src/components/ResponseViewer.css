@@ -1,8 +1,8 @@
 .response-panel {
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.9);
+  padding: 22px;
+  background: var(--surface-strong);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 26px;
   text-align: left;
 }
 
@@ -10,28 +10,28 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 18px;
 }
 
 .response-badge {
   border-radius: 999px;
   padding: 10px 14px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .response-badge.success {
-  background: rgba(16, 185, 129, 0.16);
+  background: rgba(16, 185, 129, 0.18);
   color: #047857;
 }
 
 .response-badge.danger {
-  background: rgba(248, 113, 113, 0.16);
+  background: rgba(248, 113, 113, 0.18);
   color: #b91c1c;
 }
 
 .response-badge.warning {
-  background: rgba(251, 191, 36, 0.16);
+  background: rgba(251, 191, 36, 0.18);
   color: #92400e;
 }
 
@@ -42,8 +42,8 @@
 
 .response-body {
   background: var(--code-bg);
-  border-radius: 18px;
-  padding: 16px;
+  border-radius: 22px;
+  padding: 18px;
   font-family: var(--mono);
   overflow-x: auto;
   white-space: pre-wrap;
@@ -53,8 +53,8 @@
 .response-empty {
   padding: 18px;
   color: var(--text);
-  background: rgba(249, 250, 251, 0.8);
-  border-radius: 18px;
+  background: rgba(239, 240, 247, 0.9);
+  border-radius: 20px;
 }
 
 .button-secondary {
@@ -64,4 +64,9 @@
   border-radius: 999px;
   padding: 10px 16px;
   cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.button-secondary:hover {
+  transform: translateY(-1px);
 }
