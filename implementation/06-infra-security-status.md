@@ -2,25 +2,41 @@
 
 ## Đã triển khai
 
-- [x] Vault OSS (non-dev mode, file storage) + bootstrap script `core/vault/init-dev.ps1`
-- [x] Loki + Promtail + Grafana datasource provisioning
-- [x] ModSecurity edge (OWASP CRS nginx image)
-- [x] TLS edge (HTTPS 443) + mTLS route billing (`billing-mtls-proxy:8443`)
-- [x] Script kiểm thử cập nhật HTTPS/mTLS: `security/run-security-checks.ps1`
+- [x] Vault OSS (non-dev mode) + bootstrap `core/vault/init-dev.ps1`
+- [x] Loki + Promtail + Grafana
+- [x] ModSecurity edge + TLS + mTLS billing route
+- [x] Kong declarative (DB-less) + correlation-id + rate limit
+- [x] Keycloak realm `shopflow` import (`core/keycloak/shopflow-realm.json`)
+- [x] PostgreSQL app-db + seed 2 tenant
+- [x] order/user/billing/auth services (Node.js) thay echo-server
+- [x] D1 BOLA, D3 HMAC, D4 SSRF, D2 refresh replay trong service code
+- [x] JWT/JWKS validation tại service (multi-issuer localhost/keycloak)
+- [x] API contract: `docs/api-contract.md`
+- [x] CI: `.github/workflows/backend-ci.yml`
+- [x] Runbook: `docs/RUNBOOK.md`
 
 ## File chính
 
 - `core/docker-compose.yml`
-- `core/nginx/Dockerfile`
-- `core/nginx/billing-mtls.conf`
-- `core/vault/config.hcl`, `core/vault/init-dev.ps1`
-- `core/loki/loki-config.yml`
-- `core/promtail/promtail-config.yml`
-- `core/certs/generate-certs.ps1`
-- `core/observability/grafana/provisioning/datasources/datasources.yml`
+- `services/*/server.js`, `services/shared/index.js`
+- `core/kong/kong.yml`
+- `core/db/init.sql`
+- `security/run-security-checks.ps1`, `security/fetch-lab-tokens.ps1`
 
 ## Lưu ý vận hành
 
-1. Chạy `generate-certs.ps1` trước khi `docker compose build`.
-2. Port mapping: HTTP `80`, HTTPS `443`, mTLS webhook `8443`.
-3. Vault root token lấy từ `core/vault/.vault-init.json` sau khi bootstrap.
+1. `generate-certs.ps1` trước khi build edge.
+2. Sau Vault init: set `VAULT_ROOT_TOKEN` trong `core/.env`.
+3. Kong OSS: JWT verify tại microservice; gateway enforce correlation + rate limit.
+
+## Checklist chốt
+
+- [`07-final-backend-checklist.md`](07-final-backend-checklist.md)
+- Verify: `scripts/verify-final-backend.ps1`
+- Evidence: `docs/evidence/`
+
+## Hạn chế còn lại (production tiếp theo)
+
+- JWT tại Kong OSS hạn chế (verify tại service).
+- D2 refresh replay store in-memory (auth-service) — cần Redis/DB cho multi-instance.
+- Multi-node HA: triển khai thực tế qua `core/docker-stack.yml`.

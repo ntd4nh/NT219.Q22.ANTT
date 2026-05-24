@@ -2,17 +2,15 @@
 
 ## Cấu trúc
 
-- `docker-compose.yml`: stack edge (ModSecurity), gateway, IdP, Vault, Loki, observability.
-- `kong/kong.yml`: declarative routes.
-- `nginx/`: ModSecurity edge image + mTLS billing proxy.
-- `vault/`: cấu hình và script init lab.
-- `loki/`, `promtail/`: log pipeline.
-- `certs/`: chứng chỉ TLS/mTLS lab.
-- `observability/`: Prometheus + Grafana provisioning.
+- `docker-compose.yml`: edge, Kong (declarative), Keycloak, Vault, app-db, 4 microservices, observability.
+- `kong/kong.yml`: routes + correlation-id + rate limit.
+- `db/init.sql`: schema + seed 2 tenant.
+- `keycloak/shopflow-realm.json`: realm import.
+- `nginx/`, `vault/`, `loki/`, `promtail/`, `certs/`, `observability/`.
 
 ## Khởi chạy
 
-### 1) Tạo chứng chỉ TLS/mTLS (bắt buộc trước khi build edge)
+### 1) Chứng chỉ TLS/mTLS
 
 ```powershell
 cd core/certs
@@ -20,43 +18,55 @@ powershell -ExecutionPolicy Bypass -File .\generate-certs.ps1
 cd ..
 ```
 
-### 2) Khởi động stack
+### 2) Build & up
 
 ```powershell
 cd core
-docker compose build edge-nginx
+docker compose build
 docker compose up -d
 docker compose ps
 ```
 
-### 3) Khởi tạo Vault (KV + Transit)
+### 3) Vault bootstrap
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
+copy .env.example .env
+# Điền VAULT_ROOT_TOKEN từ core/vault/.vault-init.json (không commit)
+docker compose up -d billing-service order-service
 ```
 
-## Kiểm tra nhanh
+## Kiểm tra
 
 ```powershell
-# HTTP qua edge (ModSecurity)
-curl http://localhost/api/orders
-
-# HTTPS edge (bo qua verify cert lab)
-curl -k https://localhost/api/users
-
-# mTLS webhook route (can client cert)
-curl -k --cert certs/client.crt --key certs/client.key https://localhost:8443/api/billing/webhook -X POST -d "{\"event\":\"test\"}" -H "Content-Type: application/json"
+cd security
+. .\fetch-lab-tokens.ps1
+curl -H "Authorization: Bearer $env:VALID_TOKEN" http://localhost/api/orders
+powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
+
+## Endpoints
+
+| Service | Path |
+|---------|------|
+| Orders | `/api/orders`, `/api/orders/:id` |
+| Users | `/api/users/fetch-url` |
+| Billing | `/api/billing/webhook`, `/api/billing/test-sign` |
+| Auth | `/api/auth/refresh` |
+
+Contract: [`docs/api-contract.md`](../docs/api-contract.md)
+
+Checklist chốt: [`implementation/07-final-backend-checklist.md`](../implementation/07-final-backend-checklist.md)  
+Verify: `powershell -ExecutionPolicy Bypass -File ..\scripts\verify-final-backend.ps1`
 
 ## Observability
 
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000 (admin/admin)
-- Loki query trong Grafana Explore: `{service="kong"}`
+- Loki: Explore `{container_name="order-service"} |= "BOLA_BLOCKED"`
 
-## Vault lab
+## Vault
 
-- UI/API: http://127.0.0.1:8200
-- Root token: xem trong `core/vault/.vault-init.json`
-- Secret paths: `secret/data/jwt`, `secret/data/hmac`, `secret/data/db-credentials`
-- Transit key: `shopflow-master`
+- API: http://localhost:8200
+- Paths: `secret/data/hmac`, `secret/data/db-credentials`, Transit `shopflow-master`
+- Token: local file `.vault-init.json` (gitignored)

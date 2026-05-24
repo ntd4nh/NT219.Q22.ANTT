@@ -1,0 +1,9 @@
+﻿Rollback rehearsal - 2026-05-24 09:46:50
+Procedure: docs/ROLLBACK-REHEARSAL.md (lab: stack up + security gate)
+Steps executed:
+1. docker compose up -d --no-build (core/)
+2. fetch-lab-tokens.ps1 + run-security-checks.ps1
+Duration: 0.2 minutes (< 15 min target)
+Security: Result 7/7 checks passed
+Stack healthy: order-service, user-service, billing-service, auth-service, kong, keycloak, vault, app-db (see docker-compose-ps.txt)
+Pass: YES

@@ -13,11 +13,11 @@
 ## D2 - Token replay
 
 ### Case D2.1
-- Input: access token het han.
+- Input: access token het han tren `GET /api/orders`.
 - Expect: `401`.
 
 ### Case D2.2
-- Input: refresh token da rotate nhung dung lai token cu.
+- Input: refresh token da rotate nhung dung lai token cu tren `POST /api/auth/refresh`.
 - Expect: `401`.
 
 ## D3 - Webhook forgery

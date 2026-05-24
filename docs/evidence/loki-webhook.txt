@@ -1,0 +1,4 @@
+﻿{"ts":"2026-05-24T02:45:53.270Z","service":"billing-service","event":"WEBHOOK_REJECTED","correlationId":"4fec6e61-11be-4c29-b1b5-8e0ee29601f2","reason":"INVALID_SIGNATURE"}
+{"ts":"2026-05-24T02:45:40.694Z","service":"billing-service","event":"WEBHOOK_REJECTED","correlationId":"088835a9-fa4f-40a1-a165-be6263428b57","reason":"INVALID_SIGNATURE"}
+{"ts":"2026-05-24T02:44:47.373Z","service":"billing-service","event":"WEBHOOK_REJECTED","correlationId":"b94fd0c3-7706-4c44-9ad8-0fa9835235d1","reason":"INVALID_SIGNATURE"}
+{"ts":"2026-05-24T02:43:35.442Z","service":"billing-service","event":"WEBHOOK_REJECTED","correlationId":"4c0d51b8-5fb5-4808-91d4-5d5d4dbd8132","reason":"INVALID_SIGNATURE"}

@@ -36,7 +36,8 @@ Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiế
 
 ## Cấu trúc thư mục
 
-- `docs/`: Tài liệu kiến trúc và yêu cầu đồ án.
+- `docs/`: Tài liệu kiến trúc, API contract, runbook.
+- `services/`: Microservices thật (order, user, billing, auth).
 - `core/`: Docker Compose, gateway, edge, observability config.
 - `security/`: Test-case, policy, script kiểm thử D1-D4.
 - `metrics/`: Báo cáo và dữ liệu đo lường.
@@ -46,7 +47,8 @@ Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiế
 
 ## Xem xét project hiện tại
 
-- Kiến trúc triển khai đang bám `docs/Kien-truc-he-thong-NT219.md` (canonical).
+- Kiến trúc triển khai đang bám `docs/books/Kien-truc-he-thong-NT219.md` (canonical).
+- Backend: microservices thật + contract `docs/api-contract.md`.
 - Mô hình chạy self-host qua Docker Compose: `Nginx + ModSecurity`, `Kong`, `Keycloak`, `Vault`, `PostgreSQL`, `Prometheus`, `Loki`, `Grafana`.
 - Mục tiêu kiểm chứng chính: D1-D4 (BOLA, token replay, webhook forgery, SSRF).
 - Trạng thái hiện tại: phù hợp demo/lab NT219, chưa tối ưu cho production HA.
@@ -61,9 +63,12 @@ Hệ thống demo bảo mật API cho SME, định hướng self-host theo kiế
 
 ```powershell
 cd core
+docker compose build
 docker compose up -d
 docker compose ps
 powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
+# copy .env.example -> .env, điền VAULT_ROOT_TOKEN
+docker compose up -d order-service billing-service
 ```
 
 ### Truy cập nhanh các dịch vụ
@@ -97,6 +102,14 @@ docker compose logs -f edge-nginx kong keycloak vault
 cd security
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
+
+### Checklist chốt backend
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-final-backend.ps1
+```
+
+Chi tiết: [`implementation/07-final-backend-checklist.md`](implementation/07-final-backend-checklist.md)
 
 ### Dừng hệ thống
 

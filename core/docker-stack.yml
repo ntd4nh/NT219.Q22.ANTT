@@ -1,0 +1,24 @@
+# Docker Swarm overlay (multi-node) — deploy sau khi lab compose ổn định
+# docker swarm init && docker stack deploy -c docker-stack.yml shopflow
+
+version: "3.8"
+
+services:
+  kong:
+    image: kong:3.7
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+    configs:
+      - source: kong_yml
+        target: /etc/kong/kong.yml
+    ports:
+      - "8000:8000"
+    deploy:
+      replicas: 2
+      placement:
+        constraints: [node.role == manager]
+
+configs:
+  kong_yml:
+    file: ./kong/kong.yml

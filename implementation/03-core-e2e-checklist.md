@@ -1,21 +1,19 @@
-# Core E2E checklist (Ngay 3-5)
+# Core E2E checklist
 
-## Day 3
-- [ ] Khoi dong `docker compose up -d` thanh cong.
-- [ ] `edge-nginx`, `kong`, `keycloak`, `order/user/billing` o trang thai running.
-- [ ] Route `/api/orders`, `/api/users`, `/api/billing` tra ve response.
+> Checklist chốt đầy đủ: [`07-final-backend-checklist.md`](07-final-backend-checklist.md)  
+> Verify: `scripts/verify-final-backend.ps1`
 
-## Day 4
-- [ ] Tao realm/client Keycloak cho SPA (Auth Code + PKCE).
-- [ ] Gateway verify JWT claim (`iss`, `aud`, `exp`).
-- [ ] Service enforce scope/RBAC can ban.
+## Runtime
 
-## Day 5
-- [ ] Co data test 2 tenant.
-- [ ] Luong login -> access token -> call API thanh cong.
-- [ ] Co log truy vet gateway/service cho 1 request mau.
+- [~] `docker compose up -d` — stack khởi động (xác nhận trên máy có Docker)
+- [x] Cấu hình order/user/billing/auth services trong compose
+- [x] Route `/api/orders`, `/api/users`, `/api/billing`, `/api/auth`
+- [x] Realm `shopflow` + users tenant-a/b (`core/keycloak/shopflow-realm.json`)
+- [x] JWT verify (`iss`, `exp`, `tenant_id`) trong code
+- [~] D1-D4 automation script 7/7 (chạy `security/run-security-checks.ps1`)
 
-## Bang chung can luu
-- Screenshot dashboard container.
-- Log request qua edge/gateway.
-- File export cau hinh realm Keycloak.
+## Evidence
+
+- `docs/evidence/security-checks-output.txt`
+- `docs/evidence/verify-final-backend-*.log`
+- Grafana Loki: `BOLA_BLOCKED`, `WEBHOOK_REJECTED`, `SSRF_BLOCKED`

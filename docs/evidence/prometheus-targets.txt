@@ -1,0 +1,12 @@
+﻿
+scrapePool      health labels                                               
+----------      ------ ------                                               
+auth-service    up     @{instance=auth-service:8080; job=auth-service}      
+billing-service up     @{instance=billing-service:8080; job=billing-service}
+kong            up     @{instance=kong:8001; job=kong}                      
+order-service   up     @{instance=order-service:8080; job=order-service}    
+prometheus      up     @{instance=prometheus:9090; job=prometheus}          
+user-service    up     @{instance=user-service:8080; job=user-service}      
+
+
+

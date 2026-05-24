@@ -5,26 +5,59 @@ services:
     url: http://order-service:8080
     routes:
       - name: order-route
-        paths:
-          - /api/orders
+        paths: ["/api/orders"]
         strip_path: false
+    plugins:
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-Id
+          generator: uuid
+          echo_downstream: true
+
   - name: user-service
     url: http://user-service:8080
     routes:
       - name: user-route
-        paths:
-          - /api/users
+        paths: ["/api/users"]
         strip_path: false
+    plugins:
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-Id
+          generator: uuid
+          echo_downstream: true
+
   - name: billing-service
     url: http://billing-service:8080
     routes:
       - name: billing-route
-        paths:
-          - /api/billing
+        paths: ["/api/billing"]
         strip_path: false
+    plugins:
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-Id
+          generator: uuid
+          echo_downstream: true
+
+  - name: auth-service
+    url: http://auth-service:8080
+    routes:
+      - name: auth-route
+        paths: ["/api/auth"]
+        strip_path: false
+    plugins:
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-Id
+          generator: uuid
+          echo_downstream: true
 
 plugins:
   - name: rate-limiting
     config:
-      minute: 120
+      minute: 300
       policy: local
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 2

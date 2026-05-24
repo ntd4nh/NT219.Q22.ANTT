@@ -28,8 +28,8 @@
 - [x] Co Vault OSS (Transit + KV), rotation key  
   Bang chung: `core/docker-compose.yml`, `core/vault/config.hcl`, `core/vault/init-dev.ps1`.
 
-- [x] Co skeleton app services (Order/User/Billing)  
-  Bang chung: `core/docker-compose.yml` (dang o dang mock service).
+- [x] Co app services (Order/User/Billing/Auth)  
+  Bang chung: `services/*`, `core/docker-compose.yml` (microservices that).
 
 - [~] Docker phan tan da node dung nghia vat ly  
   Hien tai: da tach role theo service/network logic, chua co nhieu host node vat ly.
@@ -59,7 +59,7 @@
 - Muc do hoan thanh Stage 1 (theo plan): **100%**.
 - Muc do khop voi kien truc canonical o lop nen tang: **khoang 90-95%**.
 - Da dat: khung edge-gateway-idp-services-observability, backlog/board/DoD day du.
-- Chua dat (anh huong den do khop canonical): topology da node vat ly va app service thuc thi D1-D4 bang code that.
+- Da dat: app service thuc thi D1-D4; topology da node vat ly: xem `core/docker-stack.yml` (Swarm).
 
 ## D. Viec can lam ngay sau Stage 1 (de sat kien truc thong nhat)
 

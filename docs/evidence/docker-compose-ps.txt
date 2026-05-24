@@ -1,0 +1,16 @@
+﻿NAME                 IMAGE                              COMMAND                  SERVICE              CREATED          STATUS                   PORTS
+app-db               postgres:16-alpine                 "docker-entrypoint.sΓÇª"   app-db               10 minutes ago   Up 9 minutes (healthy)   5432/tcp
+auth-service         core-auth-service                  "docker-entrypoint.sΓÇª"   auth-service         10 minutes ago   Up 9 minutes (healthy)   8080/tcp
+billing-mtls-proxy   nginx:1.27-alpine                  "/docker-entrypoint.ΓÇª"   billing-mtls-proxy   18 hours ago     Up 9 minutes             0.0.0.0:8443->443/tcp, [::]:8443->443/tcp
+billing-service      core-billing-service               "docker-entrypoint.sΓÇª"   billing-service      8 minutes ago    Up 8 minutes (healthy)   8080/tcp
+edge-nginx           core-edge-nginx                    "/docker-entrypoint.ΓÇª"   edge-nginx           9 minutes ago    Up 9 minutes (healthy)   0.0.0.0:80->8080/tcp, [::]:80->8080/tcp, 0.0.0.0:443->8443/tcp, [::]:443->8443/tcp
+grafana              grafana/grafana:11.2.0             "/run.sh"                grafana              18 hours ago     Up 9 minutes             0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+keycloak             quay.io/keycloak/keycloak:26.0.0   "/opt/keycloak/bin/kΓÇª"   keycloak             10 minutes ago   Up 9 minutes             0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+keycloak-db          postgres:16-alpine                 "docker-entrypoint.sΓÇª"   keycloak-db          18 hours ago     Up 9 minutes             5432/tcp
+kong                 kong:3.7                           "/docker-entrypoint.ΓÇª"   kong                 10 minutes ago   Up 9 minutes (healthy)   0.0.0.0:8000-8001->8000-8001/tcp, [::]:8000-8001->8000-8001/tcp
+loki                 grafana/loki:3.0.0                 "/usr/bin/loki -confΓÇª"   loki                 18 hours ago     Up 9 minutes             0.0.0.0:3100->3100/tcp, [::]:3100->3100/tcp
+order-service        core-order-service                 "docker-entrypoint.sΓÇª"   order-service        8 minutes ago    Up 8 minutes (healthy)   8080/tcp
+prometheus           prom/prometheus:v2.54.1            "/bin/prometheus --cΓÇª"   prometheus           10 minutes ago   Up 9 minutes             0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+promtail             grafana/promtail:3.0.0             "/usr/bin/promtail -ΓÇª"   promtail             18 hours ago     Up 9 minutes             
+user-service         core-user-service                  "docker-entrypoint.sΓÇª"   user-service         10 minutes ago   Up 9 minutes (healthy)   8080/tcp
+vault                hashicorp/vault:1.18               "vault server -confiΓÇª"   vault                17 hours ago     Up 9 minutes (healthy)   0.0.0.0:8200->8200/tcp, [::]:8200->8200/tcp

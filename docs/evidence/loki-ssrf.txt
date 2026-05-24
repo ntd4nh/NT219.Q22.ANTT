@@ -1,0 +1,1 @@
+﻿{"ts":"2026-05-24T02:44:17.691Z","service":"user-service","event":"SSRF_BLOCKED","correlationId":"a63ca55a-e7ad-45ea-ba86-0bd3d390c0e9","url":"http://169.254.169.254/latest/meta-data/","reason":"NOT_IN_ALLOWLIST"}

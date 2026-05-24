@@ -91,7 +91,7 @@ try {
 $secrets = @{
   "secret/data/jwt" = @{ data = @{ signing_key = "lab-jwt-signing-key"; issuer = "keycloak" } }
   "secret/data/hmac" = @{ data = @{ webhook_secret = "lab-hmac-secret-change-me" } }
-  "secret/data/db-credentials" = @{ data = @{ username = "app_user"; password = "app_password_lab" } }
+  "secret/data/db-credentials" = @{ data = @{ username = "shopflow_app"; password = "shopflow_app" } }
 }
 
 foreach ($entry in $secrets.GetEnumerator()) {

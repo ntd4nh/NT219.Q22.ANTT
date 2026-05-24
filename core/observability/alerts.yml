@@ -1,0 +1,18 @@
+groups:
+  - name: shopflow_security
+    rules:
+      - alert: HighAuthFailureRate
+        expr: increase(shopflow_auth_failures_total[5m]) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Spike in authentication failures
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Target {{ $labels.job }} is down

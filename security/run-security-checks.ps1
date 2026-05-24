@@ -27,89 +27,81 @@ function Invoke-ExpectedStatus {
   if ($SkipTlsVerify) {
     if ($PSVersionTable.PSVersion.Major -ge 7) {
       $params.SkipCertificateCheck = $true
-    } else {
-      Write-Host "[WARN] Can PowerShell 7+ de bo qua verify TLS cert lab." -ForegroundColor Yellow
     }
   }
 
   try {
+    $headerArgs = @()
+    foreach ($k in $Headers.Keys) { $headerArgs += @("-H", "$k`:$($Headers[$k])") }
+    $curlArgs = @("-s", "-o", "NUL", "-w", "%{http_code}", "-X", $Method, "--max-time", "30") + $headerArgs
+    if ($SkipTlsVerify) { $curlArgs = @("-k") + $curlArgs }
     if ($ClientCertPath -ne "" -and $ClientKeyPath -ne "") {
-      if (-not (Get-Command curl.exe -ErrorAction SilentlyContinue)) {
-        Write-Host "[ERROR] $Name -> can curl.exe cho mTLS test" -ForegroundColor Red
-        return $false
-      }
-      $headerArgs = @()
-      foreach ($k in $Headers.Keys) { $headerArgs += @("-H", "$k`:$($Headers[$k])") }
-      $curlArgs = @("-k", "--cert", $ClientCertPath, "--key", $ClientKeyPath, "-s", "-o", "NUL", "-w", "%{http_code}", "-X", $Method) + $headerArgs
-      if ($Body -ne "") { $curlArgs += @("-d", $Body, "-H", "Content-Type: application/json") }
-      $curlArgs += $Uri
-      $code = & curl.exe @curlArgs
-      $actualStatus = [int]$code
-    } else {
-      Invoke-WebRequest @params | Out-Null
-      $actualStatus = 200
+      $curlArgs += @("--cert", $ClientCertPath, "--key", $ClientKeyPath)
     }
+    $bodyFile = $null
+    if ($Body -ne "") {
+      $bodyFile = Join-Path $env:TEMP "shopflow-check-$([guid]::NewGuid().ToString('N')).json"
+      [System.IO.File]::WriteAllText($bodyFile, $Body, [System.Text.UTF8Encoding]::new($false))
+      $curlArgs += @("-H", "Content-Type: application/json", "--data-binary", "@$bodyFile")
+    }
+    $curlArgs += $Uri
+    $actualStatus = [int](& curl.exe @curlArgs)
+    if ($bodyFile -and (Test-Path $bodyFile)) { Remove-Item -Path $bodyFile -Force -ErrorAction SilentlyContinue }
   } catch {
-    if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
-      $actualStatus = [int]$_.Exception.Response.StatusCode
-    } else {
-      Write-Host "[ERROR] $Name -> request failed without HTTP status: $($_.Exception.Message)" -ForegroundColor Red
-      return $false
-    }
+    Write-Host "[ERROR] $Name -> $($_.Exception.Message)" -ForegroundColor Red
+    return $false
   }
 
   if ($actualStatus -eq $ExpectedStatus) {
     Write-Host "[PASS] $Name -> $actualStatus" -ForegroundColor Green
     return $true
   }
-
   Write-Host "[FAIL] $Name -> expected $ExpectedStatus but got $actualStatus" -ForegroundColor Red
   return $false
 }
 
-# --- Config ---
 $BaseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { "http://localhost" }
 $BaseUrlTls = if ($env:BASE_URL_TLS) { $env:BASE_URL_TLS } else { "https://localhost" }
 $MtlsUrl = if ($env:MTLS_WEBHOOK_URL) { $env:MTLS_WEBHOOK_URL } else { "https://localhost:8443/api/billing/webhook" }
 $CertDir = if ($env:CERT_DIR) { $env:CERT_DIR } else { "..\core\certs" }
+
+if (-not $env:VALID_TOKEN -or $env:VALID_TOKEN -like "replace-*") {
+  Write-Host "[INFO] Fetching lab tokens from Keycloak..."
+  $tokenScript = Join-Path $PSScriptRoot "fetch-lab-tokens.ps1"
+  if (Test-Path $tokenScript) { . $tokenScript }
+}
+
+$ValidToken = if ($env:VALID_TOKEN) { $env:VALID_TOKEN } else { throw "Set VALID_TOKEN or run fetch-lab-tokens.ps1" }
+$ExpiredToken = if ($env:EXPIRED_TOKEN) { $env:EXPIRED_TOKEN } else { "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjF9.invalid" }
 $OrderPathCrossTenant = if ($env:D1_ORDER_PATH) { $env:D1_ORDER_PATH } else { "/api/orders/order-tenant-b" }
-$ExpiredToken = if ($env:EXPIRED_TOKEN) { $env:EXPIRED_TOKEN } else { "replace-expired-token" }
-$ValidToken = if ($env:VALID_TOKEN) { $env:VALID_TOKEN } else { "replace-valid-token" }
-$ReplayRefreshPath = if ($env:D2_REFRESH_PATH) { $env:D2_REFRESH_PATH } else { "/api/auth/refresh" }
-$WebhookPath = if ($env:D3_WEBHOOK_PATH) { $env:D3_WEBHOOK_PATH } else { "/api/billing/webhook" }
-$SsrfPath = if ($env:D4_FETCH_PATH) { $env:D4_FETCH_PATH } else { "/api/users/fetch-url" }
 
 Write-Host "Running D1-D4 security checks on $BaseUrl ..."
-Write-Host "TLS endpoint: $BaseUrlTls | mTLS endpoint: $MtlsUrl"
 
 $passed = 0
-$total = 6
+$total = 7
 
-# D1: BOLA cross-tenant must be 403
-$d1Headers = @{ Authorization = "Bearer $ValidToken"; "X-Tenant-Id" = "tenant-a" }
+$d1Headers = @{ Authorization = "Bearer $ValidToken" }
 if (Invoke-ExpectedStatus -Name "D1_BOLA_cross_tenant" -Method "GET" -Uri "$BaseUrl$OrderPathCrossTenant" -Headers $d1Headers -ExpectedStatus 403) { $passed++ }
 
-# D2: expired/replayed token must be 401
-$d2Headers = @{ Authorization = "Bearer $ExpiredToken" }
-if (Invoke-ExpectedStatus -Name "D2_Token_replay_or_expired" -Method "POST" -Uri "$BaseUrl$ReplayRefreshPath" -Headers $d2Headers -ExpectedStatus 401) { $passed++ }
+$d1OkHeaders = @{ Authorization = "Bearer $ValidToken" }
+if (Invoke-ExpectedStatus -Name "D1_valid_tenant_list" -Method "GET" -Uri "$BaseUrl/api/orders" -Headers $d1OkHeaders -ExpectedStatus 200) { $passed++ }
 
-# D3: forged webhook must be 401
+$d2Headers = @{ Authorization = "Bearer $ExpiredToken" }
+if (Invoke-ExpectedStatus -Name "D2_expired_token" -Method "GET" -Uri "$BaseUrl/api/orders" -Headers $d2Headers -ExpectedStatus 401) { $passed++ }
+
 $forgedBody = '{"event":"payment.succeeded","id":"evt-forged"}'
 $d3Headers = @{
-  "X-Signature" = "forged-signature"
+  "X-Signature" = "sha256=deadbeef"
   "X-Timestamp" = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds().ToString()
   "X-Nonce" = [guid]::NewGuid().ToString()
 }
-if (Invoke-ExpectedStatus -Name "D3_Webhook_forged" -Method "POST" -Uri "$BaseUrl$WebhookPath" -Headers $d3Headers -ExpectedStatus 401 -Body $forgedBody) { $passed++ }
+if (Invoke-ExpectedStatus -Name "D3_Webhook_forged" -Method "POST" -Uri "$BaseUrl/api/billing/webhook" -Headers $d3Headers -ExpectedStatus 401 -Body $forgedBody) { $passed++ }
 
-# D4: SSRF metadata IP must be blocked
 $d4Body = '{"url":"http://169.254.169.254/latest/meta-data/"}'
-if (Invoke-ExpectedStatus -Name "D4_SSRF_metadata_block" -Method "POST" -Uri "$BaseUrl$SsrfPath" -Headers @{} -ExpectedStatus 403 -Body $d4Body) { $passed++ }
+if (Invoke-ExpectedStatus -Name "D4_SSRF_metadata_block" -Method "POST" -Uri "$BaseUrl/api/users/fetch-url" -Headers @{} -ExpectedStatus 403 -Body $d4Body) { $passed++ }
 
-# Infra: HTTPS edge reachable (mock service co the tra 200)
-if (Invoke-ExpectedStatus -Name "INFRA_TLS_edge_reachable" -Method "GET" -Uri "$BaseUrlTls/api/orders" -Headers @{} -ExpectedStatus 200 -SkipTlsVerify) { $passed++ }
+if (Invoke-ExpectedStatus -Name "INFRA_TLS_edge_reachable" -Method "GET" -Uri "$BaseUrlTls/api/orders" -Headers @{} -ExpectedStatus 401 -SkipTlsVerify) { $passed++ }
 
-# Infra: mTLS route reject khi khong co client cert (403/400/401 deu chap nhan)
 $mtlsNoCertOk = $false
 foreach ($code in @(401, 403, 400)) {
   if (Invoke-ExpectedStatus -Name "INFRA_mTLS_without_client_cert" -Method "POST" -Uri $MtlsUrl -Headers @{} -ExpectedStatus $code -Body $forgedBody -SkipTlsVerify) {

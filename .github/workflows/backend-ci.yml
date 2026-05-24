@@ -1,0 +1,40 @@
+name: backend-ci
+
+on:
+  push:
+    paths:
+      - "services/**"
+      - "core/**"
+      - "security/**"
+      - "docs/api-contract.md"
+  pull_request:
+    paths:
+      - "services/**"
+      - "core/**"
+      - "security/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose
+        run: docker compose -f core/docker-compose.yml config
+
+      - name: Lint API contract present
+        run: test -f docs/api-contract.md
+
+      - name: Check no echo-server in compose
+        run: |
+          if grep -q "ealen/echo-server" core/docker-compose.yml; then
+            echo "echo-server still referenced"
+            exit 1
+          fi
+
+      - name: Required backend artifacts
+        run: |
+          test -f implementation/07-final-backend-checklist.md
+          test -f scripts/verify-final-backend.ps1
+          test -f docs/api-contract.md
+          test -f core/keycloak/shopflow-realm.json

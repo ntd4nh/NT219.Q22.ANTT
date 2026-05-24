@@ -31,7 +31,10 @@
 
 ```powershell
 cd security
+. .\fetch-lab-tokens.ps1
 $env:BASE_URL = "http://localhost"
 $env:BASE_URL_TLS = "https://localhost"
 powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
+
+Contract: [`docs/api-contract.md`](../docs/api-contract.md)
