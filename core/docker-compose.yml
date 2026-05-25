@@ -36,6 +36,18 @@ services:
       - dmz
       - private
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - private
+
   kong:
     image: kong:3.7
     container_name: kong
@@ -52,6 +64,7 @@ services:
     ports:
       - "127.0.0.1:8001:8001"
     depends_on:
+      - redis
       - order-service
       - user-service
       - billing-service
@@ -79,8 +92,8 @@ services:
       KC_DB_URL_HOST: keycloak-db
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HOSTNAME: localhost
       KC_HOSTNAME_PORT: 8080
       KC_HOSTNAME_STRICT: "false"
@@ -146,11 +159,15 @@ services:
       KEYCLOAK_ISSUERS: http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
+      REDIS_URL: redis://redis:6379
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       app-db:
         condition: service_healthy
       keycloak:
         condition: service_started
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -169,9 +186,11 @@ services:
       KEYCLOAK_ISSUERS: http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       SSRF_ALLOWLIST: cdn.shopflow.local,imgur.com
-      SSRF_DISABLED: ${SSRF_DISABLED:-false}
+      REDIS_URL: redis://redis:6379
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       - keycloak
+      - redis
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -188,13 +207,15 @@ services:
     environment:
       PORT: 8080
       HMAC_SECRET: ${HMAC_SECRET:-lab-hmac-secret-change-me}
-      HMAC_DISABLED: ${HMAC_DISABLED:-false}
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
       VAULT_REQUIRED: ${VAULT_REQUIRED:-false}
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
+      REDIS_URL: redis://redis:6379
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       - vault
+      - redis
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -212,8 +233,11 @@ services:
       PORT: 8080
       KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/shopflow/protocol/openid-connect/token
       KEYCLOAK_CLIENT_ID: shopflow-spa
+      REDIS_URL: redis://redis:6379
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       - keycloak
+      - redis
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -263,8 +287,8 @@ services:
     image: grafana/grafana:11.2.0
     container_name: grafana
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:

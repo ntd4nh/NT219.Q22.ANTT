@@ -7,7 +7,11 @@ import {
   metricsHandler,
   incMetric,
   securityAudit,
+  validateSecurityConfig,
+  redisPing,
 } from '../shared/index.js'
+
+validateSecurityConfig('user-service')
 
 const app = express()
 const log = createLogger('user-service')
@@ -52,7 +56,14 @@ app.use(correlationMiddleware())
 const auth = requireAuth({ log })
 
 app.get('/metrics', metricsHandler)
-app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'user-service' }))
+app.get('/health', async (_req, res) => {
+  try {
+    const redis = await redisPing()
+    res.json({ status: 'ok', service: 'user-service', redis })
+  } catch (e) {
+    res.status(503).json({ status: 'error', service: 'user-service', message: e.message })
+  }
+})
 
 app.get('/api/users', auth, (req, res) => {
   res.json({ sub: req.user.sub, tenant_id: req.user.tenantId })
@@ -61,10 +72,6 @@ app.get('/api/users', auth, (req, res) => {
 app.post('/api/users/fetch-url', requireAuth({ optional: true, log }), async (req, res) => {
   const url = req.body?.url
   if (!url) return res.status(400).json({ error: 'BAD_REQUEST', message: 'url required' })
-
-  if (process.env.SSRF_DISABLED === 'true') {
-    return res.json({ ok: true, mode: 'baseline', url })
-  }
 
   const check = await validateUrl(url)
   if (!check.ok) {

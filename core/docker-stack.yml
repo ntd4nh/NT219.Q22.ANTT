@@ -1,9 +1,18 @@
-# Docker Swarm overlay (multi-node) — deploy sau khi lab compose ổn định
-# docker swarm init && docker stack deploy -c docker-stack.yml shopflow
+# Docker Swarm overlay (multi-node) — base path after lab compose is stable
+# docker swarm init
+# docker stack deploy -c docker-stack.yml shopflow
 
 version: "3.8"
 
 services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+
   kong:
     image: kong:3.7
     environment:
@@ -16,9 +25,59 @@ services:
       - "8000:8000"
     deploy:
       replicas: 2
-      placement:
-        constraints: [node.role == manager]
+    networks:
+      - shopflow_dmz
+      - shopflow_private
+
+  order-service:
+    image: shopflow/order-service:latest
+    environment:
+      SHOPFLOW_ENV: production
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://shopflow_app:shopflow_app@app-db:5432/shopflow
+    deploy:
+      replicas: 2
+    networks:
+      - shopflow_private
+
+  user-service:
+    image: shopflow/user-service:latest
+    environment:
+      SHOPFLOW_ENV: production
+      REDIS_URL: redis://redis:6379
+    deploy:
+      replicas: 2
+    networks:
+      - shopflow_private
+
+  billing-service:
+    image: shopflow/billing-service:latest
+    environment:
+      SHOPFLOW_ENV: production
+      REDIS_URL: redis://redis:6379
+      VAULT_REQUIRED: "true"
+      VAULT_ADDR: http://vault:8200
+    deploy:
+      replicas: 2
+    networks:
+      - shopflow_private
+
+  auth-service:
+    image: shopflow/auth-service:latest
+    environment:
+      SHOPFLOW_ENV: production
+      REDIS_URL: redis://redis:6379
+    deploy:
+      replicas: 2
+    networks:
+      - shopflow_private
 
 configs:
   kong_yml:
     file: ./kong/kong.yml
+
+networks:
+  shopflow_dmz:
+    driver: overlay
+  shopflow_private:
+    driver: overlay

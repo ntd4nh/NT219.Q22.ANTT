@@ -16,7 +16,9 @@ services:
       - name: rate-limiting
         config:
           minute: 200
-          policy: local
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
 
   - name: user-service
     url: http://user-service:8080
@@ -33,7 +35,9 @@ services:
       - name: rate-limiting
         config:
           minute: 150
-          policy: local
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
 
   - name: billing-service
     url: http://billing-service:8080
@@ -50,7 +54,9 @@ services:
       - name: rate-limiting
         config:
           minute: 60
-          policy: local
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
 
   - name: auth-service
     url: http://auth-service:8080
@@ -67,13 +73,17 @@ services:
       - name: rate-limiting
         config:
           minute: 30
-          policy: local
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
 
 plugins:
   - name: rate-limiting
     config:
       minute: 300
-      policy: local
+      policy: redis
+      redis_host: redis
+      redis_port: 6379
   - name: request-size-limiting
     config:
       allowed_payload_size: 2

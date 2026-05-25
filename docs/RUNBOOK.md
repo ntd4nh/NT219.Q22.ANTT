@@ -1,6 +1,6 @@
 # Runbook vận hành backend ShopFlow
 
-## Khởi động
+## Khởi động (lab)
 
 ```powershell
 cd core
@@ -13,6 +13,15 @@ powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
 # VAULT_ROOT_TOKEN chỉ dùng admin (không inject vào microservice)
 docker compose up -d billing-service order-service
 ```
+
+## Production overlay (tren may lab)
+
+```powershell
+# .env: SHOPFLOW_ENV=production, VAULT_REQUIRED=true, REDIS_URL, VAULT_APP_TOKEN, GF_SECURITY_ADMIN_PASSWORD
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Checklist: `implementation/08-production-readiness.md`
 
 ## Kiểm tra sức khỏe
 

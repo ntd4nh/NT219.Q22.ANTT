@@ -1,0 +1,30 @@
+# Overlay production-oriented settings (lab stack base: docker-compose.yml)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  keycloak:
+    environment:
+      KC_HOSTNAME_STRICT: "true"
+      KC_HOSTNAME_STRICT_BACKCHANNEL: "true"
+
+  order-service:
+    environment:
+      SHOPFLOW_ENV: production
+      VAULT_REQUIRED: "true"
+
+  user-service:
+    environment:
+      SHOPFLOW_ENV: production
+
+  billing-service:
+    environment:
+      SHOPFLOW_ENV: production
+      VAULT_REQUIRED: "true"
+
+  auth-service:
+    environment:
+      SHOPFLOW_ENV: production
+
+  grafana:
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:?set-strong-grafana-password}

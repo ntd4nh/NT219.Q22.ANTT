@@ -1,6 +1,11 @@
 import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
+import { validateSecurityConfig, isProductionEnv } from './security-config.js'
+import { incrementWindow, redisPing, tenantRateKey } from './redis-state.js'
+
+export { validateSecurityConfig, isProductionEnv } from './security-config.js'
+export { redisPing } from './redis-state.js'
 
 const counters = {}
 
@@ -38,34 +43,30 @@ export function correlationMiddleware() {
   }
 }
 
-const tenantBuckets = new Map()
 const TENANT_RPM = Number(process.env.TENANT_RATE_LIMIT_RPM || 120)
 
 export function tenantRateLimit() {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const tenantId = req.user?.tenantId
     if (!tenantId) return next()
 
-    const now = Date.now()
-    const windowMs = 60_000
-    let bucket = tenantBuckets.get(tenantId)
-    if (!bucket || now - bucket.start >= windowMs) {
-      bucket = { start: now, count: 0 }
-      tenantBuckets.set(tenantId, bucket)
+    const windowMinute = Math.floor(Date.now() / 60_000)
+    const key = tenantRateKey(tenantId, windowMinute)
+    try {
+      const { limited } = await incrementWindow(key, 60, TENANT_RPM)
+      if (limited) {
+        incMetric('shopflow_rate_limited_total')
+        return res.status(429).json({
+          error: 'RATE_LIMITED',
+          message: 'Tenant quota exceeded',
+          tenant_id: tenantId,
+        })
+      }
+      req.headers['x-tenant-id'] = tenantId
+      next()
+    } catch (e) {
+      return res.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: e.message })
     }
-    bucket.count += 1
-
-    if (bucket.count > TENANT_RPM) {
-      incMetric('shopflow_rate_limited_total')
-      return res.status(429).json({
-        error: 'RATE_LIMITED',
-        message: 'Tenant quota exceeded',
-        tenant_id: tenantId,
-      })
-    }
-
-    req.headers['x-tenant-id'] = tenantId
-    next()
   }
 }
 

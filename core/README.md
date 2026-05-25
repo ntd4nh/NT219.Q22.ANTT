@@ -27,7 +27,11 @@ docker compose up -d
 docker compose ps
 ```
 
-### 3) Vault bootstrap (least-privilege runtime token)
+### 3) Redis (shared security state)
+
+Services dùng `REDIS_URL=redis://redis:6379` cho refresh replay, webhook nonce, tenant rate-limit.
+
+### 4) Vault bootstrap (least-privilege runtime token)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
@@ -47,6 +51,14 @@ powershell -ExecutionPolicy Bypass -File .\run-security-checks.ps1
 ```
 
 Kỳ vọng: mỗi layer `[STAGE PASS]` và `Result: <n>/<n> checks passed.` — xem `security/layered-checks.md`.
+
+Production overlay:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Xem `implementation/08-production-readiness.md`.
 
 ## Security hardening (bonus)
 

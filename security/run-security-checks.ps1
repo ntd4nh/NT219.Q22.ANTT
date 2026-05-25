@@ -196,6 +196,23 @@ $certRoot = (Resolve-Path $CertDir).Path
 Test-PrereqFile -Name "PREREQ_client_cert" -Path (Join-Path $certRoot "client.crt") | Out-Null
 Test-PrereqFile -Name "PREREQ_client_key" -Path (Join-Path $certRoot "client.key") | Out-Null
 Invoke-ExpectedStatus -Name "PREREQ_keycloak_reachable" -Method "GET" -Uri $KeycloakUrl -Headers @{} -ExpectedStatus 200 | Out-Null
+$redisUrl = if ($env:REDIS_URL) { $env:REDIS_URL } else { "redis://localhost:6379" }
+try {
+  $redisPing = [int](& curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "http://localhost:6379" 2>$null)
+  if ($redisPing -gt 0) {
+    Write-Host "[PASS] PREREQ_redis_reachable -> tcp" -ForegroundColor Green
+    Record-Check $true
+  } else { throw "no response" }
+} catch {
+  $dockerRedis = docker exec redis redis-cli ping 2>$null
+  if ($dockerRedis -match "PONG") {
+    Write-Host "[PASS] PREREQ_redis_reachable -> PONG" -ForegroundColor Green
+    Record-Check $true
+  } else {
+    Write-Host "[FAIL] PREREQ_redis_reachable -> down" -ForegroundColor Red
+    Record-Check $false
+  }
+}
 End-Layer -Name "Prereq"
 
 $forgedBody = '{"event":"payment.succeeded","id":"evt-forged"}'
@@ -320,6 +337,7 @@ foreach ($layer in @("Prereq", "EdgeIngress", "Gateway", "Service", "Auth", "mTL
   else { Write-Host "  $layer : FAIL ($($s.passed)/$t)" -ForegroundColor Red }
 }
 
+# Prereq now has 5 checks when redis check enabled
 $total = $script:PassedTotal + $script:FailedTotal
 Write-Host "Result: $script:PassedTotal/$total checks passed."
 Write-LayerSummaryFile
