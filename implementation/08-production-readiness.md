@@ -18,8 +18,15 @@ Baseline lab gate: `security/run-security-checks.ps1` (layered 18/18).
 
 ## P2 — nang cap
 
-- [x] `core/docker-stack.yml` skeleton HA (Kong + 4 services + Redis)
-- [ ] Test multi-instance consistency trong CI (script: `security/test-redis-consistency.ps1`)
+- [x] `core/docker-stack.yml` skeleton HA (edge, Kong, OPA, Keycloak, Vault, observability, secrets)
+- [x] OPA PDP + PEP pilot (`order-service`, `core/opa/policies/orders.rego`)
+- [x] PKCE SPA (`frontend/src/auth/pkce.js`, `/callback`)
+- [x] CI security fast/slow (`.github/workflows/security-pr.yml`, `security-nightly.yml`)
+- [x] Research metrics: prom-client histogram, recording rules, `metrics/run-g3-benchmark.ps1`
+- [x] Runbook sâu: `docs/runbook/*` (rotation, revocation, incident, onboarding)
+- [x] Test multi-instance consistency trong CI (`security/test-redis-consistency.ps1`, `ci/run-security-gate.sh`)
+- [x] S2S client_credentials + internal mTLS (`security/test-s2s-client-credentials.ps1`, `test-internal-mtls.ps1`)
+- [x] Gap checklist 100% (`implementation/09-gap-checklist-pass-fail.md`)
 
 ## Chay production overlay (lab host)
 

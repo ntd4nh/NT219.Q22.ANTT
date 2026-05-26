@@ -38,3 +38,9 @@ jobs:
           test -f scripts/verify-final-backend.ps1
           test -f docs/api-contract.md
           test -f core/keycloak/shopflow-realm.json
+          test -f core/opa/policies/orders.rego
+          test -f security/openapi.yaml
+          test -f metrics/run-g3-benchmark.ps1
+          test -f metrics/run-incident-drill.ps1
+          test -f security/test-s2s-client-credentials.ps1
+          test -f ci/run-security-gate.sh

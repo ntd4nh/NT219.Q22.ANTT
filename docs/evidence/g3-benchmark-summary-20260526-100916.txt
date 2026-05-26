@@ -1,0 +1,8 @@
+
+scenario_group avg_p95_ms avg_block_rate
+-------------- ---------- --------------
+list              4036.04              0
+bola                19.16              1
+
+
+

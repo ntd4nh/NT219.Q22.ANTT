@@ -5,7 +5,7 @@ services:
     url: http://order-service:8080
     routes:
       - name: order-route
-        paths: ["/api/orders"]
+        paths: ["/api/orders", "/api/internal/orders"]
         strip_path: false
     plugins:
       - name: correlation-id
@@ -24,7 +24,7 @@ services:
     url: http://user-service:8080
     routes:
       - name: user-route
-        paths: ["/api/users"]
+        paths: ["/api/users", "/api/internal/users"]
         strip_path: false
     plugins:
       - name: correlation-id
@@ -43,7 +43,7 @@ services:
     url: http://billing-service:8080
     routes:
       - name: billing-route
-        paths: ["/api/billing"]
+        paths: ["/api/billing", "/api/internal/billing"]
         strip_path: false
     plugins:
       - name: correlation-id
@@ -62,7 +62,7 @@ services:
     url: http://auth-service:8080
     routes:
       - name: auth-route
-        paths: ["/api/auth"]
+        paths: ["/api/auth", "/api/internal/auth"]
         strip_path: false
     plugins:
       - name: correlation-id

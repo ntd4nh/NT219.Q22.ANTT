@@ -1,0 +1,87 @@
+name: security-pr-fast
+
+on:
+  pull_request:
+    paths:
+      - 'services/**'
+      - 'core/**'
+      - 'security/**'
+      - 'frontend/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  secrets-sast-sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install shared deps
+        working-directory: services/shared
+        run: npm ci || npm install
+
+      - name: Semgrep (SAST)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/javascript
+
+      - name: Trivy SCA (services)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: services
+          format: sarif
+          output: trivy-services.sarif
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+
+      - name: Syft SBOM (services)
+        uses: anchore/sbom-action@v0
+        with:
+          path: services
+          format: spdx-json
+          output-file: sbom-services.spdx.json
+
+      - name: npm audit (shared)
+        working-directory: services/shared
+        run: npm audit --audit-level=high --json > npm-audit-shared.json || true
+
+      - name: Validate compose + OpenAPI
+        run: |
+          docker compose -f core/docker-compose.yml config
+          test -f security/openapi.yaml
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign SBOM with cosign
+        run: |
+          cosign sign-blob --yes --bundle sbom-services.cosign.bundle sbom-services.spdx.json
+
+      - name: Verify SBOM signature
+        run: |
+          cosign verify-blob --bundle sbom-services.cosign.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com sbom-services.spdx.json
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-pr-artifacts
+          retention-days: 14
+          path: |
+            sbom-services.spdx.json
+            sbom-services.cosign.bundle
+            trivy-services.sarif
+            npm-audit-shared.json

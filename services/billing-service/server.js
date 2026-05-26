@@ -6,11 +6,16 @@ import {
   fetchVaultSecret,
   timingSafeEqualHex,
   metricsHandler,
+  metricsMiddleware,
   incMetric,
   securityAudit,
   validateSecurityConfig,
   redisPing,
   isProductionEnv,
+  requireM2mAuth,
+  opaAllow,
+  opaDenyReason,
+  isOpaEnabled,
 } from '../shared/index.js'
 import { markOnce, nonceKey } from '../shared/redis-state.js'
 
@@ -24,8 +29,14 @@ let webhookSecret = null
 const TIMESTAMP_WINDOW_SEC = 300
 const NONCE_TTL_SEC = Number(process.env.WEBHOOK_NONCE_TTL_SEC || 300)
 
-app.use(express.json({ verify: (req, _res, buf) => { req.rawBody = buf } }))
+const jsonParser = express.json({
+  verify: (req, _res, buf) => { req.rawBody = buf },
+  type: (req) => req.path !== '/api/billing/webhook',
+})
+
+app.use(jsonParser)
 app.use(correlationMiddleware())
+app.use(metricsMiddleware('billing-service'))
 
 async function loadSecrets() {
   const required = process.env.VAULT_REQUIRED === 'true' || isProductionEnv()
@@ -66,7 +77,10 @@ async function verifyWebhook(req) {
   const replay = await markOnce(nonceKey(nonce), NONCE_TTL_SEC)
   if (replay) return { ok: false, reason: 'NONCE_REPLAY' }
 
-  const expectedHex = computeHmac(req.rawBody || Buffer.from(JSON.stringify(req.body || {})))
+  const raw = Buffer.isBuffer(req.body)
+    ? req.body
+    : (req.rawBody || Buffer.from(JSON.stringify(req.body || {})))
+  const expectedHex = computeHmac(raw)
   const provided = sigHeader.replace(/^sha256=/i, '')
   if (!timingSafeEqualHex(provided, expectedHex)) {
     return { ok: false, reason: 'INVALID_SIGNATURE' }
@@ -90,7 +104,7 @@ app.post('/api/billing/test-sign', (req, res) => {
   res.json({ signature, body: JSON.parse(body) })
 })
 
-app.post('/api/billing/webhook', async (req, res) => {
+app.post('/api/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
   const result = await verifyWebhook(req)
   if (!result.ok) {
     incMetric('shopflow_webhook_rejected_total')
@@ -100,11 +114,38 @@ app.post('/api/billing/webhook', async (req, res) => {
     })
     return res.status(401).json({ error: 'WEBHOOK_REJECTED', reason: result.reason })
   }
-  log('webhook_accepted', { correlationId: req.correlationId, event: req.body?.event })
-  res.status(200).json({ received: true })
+  let eventName = null
+  if (Buffer.isBuffer(req.body) && req.body.length) {
+    try {
+      const parsed = JSON.parse(req.body.toString('utf8'))
+      eventName = parsed?.event || null
+    } catch {
+      return res.status(400).json({ error: 'BAD_REQUEST', reason: 'INVALID_JSON' })
+    }
+  }
+  log('webhook_accepted', { correlationId: req.correlationId, event: eventName })
+  res.status(200).json({ received: true, event: eventName })
 })
 
 app.get('/api/billing', (_req, res) => res.json({ service: 'billing' }))
+
+const m2mAuth = requireM2mAuth({ log })
+app.get('/api/internal/billing/status', m2mAuth, async (req, res) => {
+  const opaInput = {
+    action: 'read',
+    subject: { client_id: req.m2m.clientId, sub: req.m2m.sub },
+    resource: { type: 'billing_status' },
+  }
+  if (isOpaEnabled()) {
+    const { allow } = await opaAllow('shopflow.billing', opaInput)
+    if (!allow) {
+      const reason = await opaDenyReason('shopflow.billing', opaInput)
+      incMetric('shopflow_opa_denied_total', { reason_code: reason })
+      return res.status(403).json({ error: 'FORBIDDEN', reason_code: reason })
+    }
+  }
+  res.json({ service: 'billing', vault_required: process.env.VAULT_REQUIRED === 'true' })
+})
 
 loadSecrets()
   .then(() => {

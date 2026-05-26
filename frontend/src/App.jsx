@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Services from './pages/Services.jsx'
 import SecurityLab from './pages/SecurityLab.jsx'
 import TokensPage from './pages/TokensPage.jsx'
+import AuthCallback from './pages/AuthCallback.jsx'
 import './App.css'
 
 const navigation = [
@@ -45,6 +46,7 @@ function App() {
               <Route path="/services" element={<Services bearerToken={authTokens.accessToken} />} />
               <Route path="/security-lab" element={<SecurityLab bearerToken={authTokens.accessToken} refreshToken={authTokens.refreshToken} />} />
               <Route path="/tokens" element={<TokensPage onTokensChange={setAuthTokens} />} />
+              <Route path="/callback" element={<AuthCallback onTokensChange={setAuthTokens} />} />
               <Route path="*" element={<Dashboard />} />
             </Routes>
           </main>

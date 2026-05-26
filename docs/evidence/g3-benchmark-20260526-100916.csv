@@ -1,0 +1,5 @@
+"scenario","requests","p95_ms","mean_ms","block_rate"
+"orders_list_run1","30","8048.1","969.7","0"
+"orders_bola_run1","30","25.28","14.08","1"
+"orders_list_run2","30","23.98","22.3","0"
+"orders_bola_run2","30","13.05","11.48","1"

@@ -1,0 +1,27 @@
+groups:
+  - name: shopflow_research
+    interval: 30s
+    rules:
+      - record: shopflow:http_request_duration_seconds:p95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, service) (
+              rate(shopflow_http_request_duration_seconds_bucket[5m])
+            )
+          )
+
+      - record: shopflow:security_blocks:rate5m
+        expr: |
+          sum(rate(shopflow_bola_blocked_total[5m]))
+          + sum(rate(shopflow_ssrf_blocked_total[5m]))
+          + sum(rate(shopflow_webhook_rejected_total[5m]))
+          + sum(rate(shopflow_opa_denied_total[5m]))
+
+      - record: shopflow:http_requests:rate5m
+        expr: sum(rate(shopflow_http_requests_total[5m]))
+
+      - record: shopflow:block_rate:ratio5m
+        expr: |
+          shopflow:security_blocks:rate5m
+          / clamp_min(shopflow:http_requests:rate5m, 0.001)

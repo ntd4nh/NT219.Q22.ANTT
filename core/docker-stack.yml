@@ -1,17 +1,26 @@
-# Docker Swarm overlay (multi-node) — base path after lab compose is stable
-# docker swarm init
-# docker stack deploy -c docker-stack.yml shopflow
+# Docker Swarm production skeleton
+# docker swarm init && docker stack deploy -c docker-stack.yml shopflow
 
 version: "3.8"
 
 services:
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+  edge-nginx:
+    image: shopflow/edge-nginx:latest
+    ports:
+      - "80:8080"
+      - "443:8443"
+    environment:
+      BACKEND: http://kong:8000
+      MODSEC_RULE_ENGINE: On
     deploy:
-      replicas: 1
-      placement:
-        constraints: [node.role == manager]
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    networks:
+      - shopflow_dmz
 
   kong:
     image: kong:3.7
@@ -21,12 +30,100 @@ services:
     configs:
       - source: kong_yml
         target: /etc/kong/kong.yml
+    deploy:
+      replicas: 2
+      placement:
+        constraints: [node.role == manager]
+    networks:
+      - shopflow_dmz
+      - shopflow_private
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    networks:
+      - shopflow_private
+
+  internal-mtls-proxy:
+    image: shopflow/internal-mtls-proxy:latest
     ports:
-      - "8000:8000"
+      - "9443:9443"
+    deploy:
+      replicas: 1
+    networks:
+      - shopflow_dmz
+      - shopflow_private
+
+  opa:
+    image: openpolicyagent/opa:0.68.0
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    configs:
+      - source: opa_orders_rego
+        target: /policies/orders.rego
+      - source: opa_users_rego
+        target: /policies/users.rego
+      - source: opa_billing_rego
+        target: /policies/billing.rego
+      - source: opa_auth_rego
+        target: /policies/auth.rego
+    deploy:
+      replicas: 1
+    networks:
+      - shopflow_private
+
+  keycloak-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD_FILE: /run/secrets/keycloak_db_password
+    secrets:
+      - keycloak_db_password
+    deploy:
+      replicas: 1
+    networks:
+      - shopflow_private
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.0
+    command: start --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_HOSTNAME_STRICT: "true"
+      KEYCLOAK_ADMIN_PASSWORD_FILE: /run/secrets/keycloak_admin_password
+    secrets:
+      - keycloak_admin_password
     deploy:
       replicas: 2
     networks:
-      - shopflow_dmz
+      - shopflow_private
+
+  vault:
+    image: hashicorp/vault:1.18
+    command: server -config=/vault/config/config.hcl
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    networks:
+      - shopflow_private
+
+  app-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shopflow
+      POSTGRES_USER: shopflow_app
+      POSTGRES_PASSWORD_FILE: /run/secrets/app_db_password
+    secrets:
+      - app_db_password
+    deploy:
+      replicas: 1
+    networks:
       - shopflow_private
 
   order-service:
@@ -34,9 +131,16 @@ services:
     environment:
       SHOPFLOW_ENV: production
       REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgres://shopflow_app:shopflow_app@app-db:5432/shopflow
+      OPA_URL: http://opa:8181
+      OPA_ENABLED: "true"
+      DATABASE_URL: postgres://shopflow_app@app-db:5432/shopflow
+    secrets:
+      - app_db_password
     deploy:
       replicas: 2
+      update_config:
+        parallelism: 1
+        failure_action: rollback
     networks:
       - shopflow_private
 
@@ -45,6 +149,7 @@ services:
     environment:
       SHOPFLOW_ENV: production
       REDIS_URL: redis://redis:6379
+      OPA_ENABLED: "false"
     deploy:
       replicas: 2
     networks:
@@ -57,6 +162,8 @@ services:
       REDIS_URL: redis://redis:6379
       VAULT_REQUIRED: "true"
       VAULT_ADDR: http://vault:8200
+    secrets:
+      - vault_app_token
     deploy:
       replicas: 2
     networks:
@@ -72,9 +179,74 @@ services:
     networks:
       - shopflow_private
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
+      - source: alerts_yml
+        target: /etc/prometheus/alerts.yml
+      - source: recording_rules_yml
+        target: /etc/prometheus/recording_rules.yml
+    deploy:
+      replicas: 1
+    networks:
+      - shopflow_private
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    configs:
+      - source: alertmanager_yml
+        target: /etc/alertmanager/alertmanager.yml
+    deploy:
+      replicas: 1
+    networks:
+      - shopflow_private
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+    secrets:
+      - grafana_admin_password
+    deploy:
+      replicas: 1
+    ports:
+      - "3000:3000"
+    networks:
+      - shopflow_private
+
 configs:
   kong_yml:
     file: ./kong/kong.yml
+  opa_orders_rego:
+    file: ./opa/policies/orders.rego
+  opa_users_rego:
+    file: ./opa/policies/users.rego
+  opa_billing_rego:
+    file: ./opa/policies/billing.rego
+  opa_auth_rego:
+    file: ./opa/policies/auth.rego
+  prometheus_yml:
+    file: ./observability/prometheus.yml
+  alerts_yml:
+    file: ./observability/alerts.yml
+  recording_rules_yml:
+    file: ./observability/recording_rules.yml
+  alertmanager_yml:
+    file: ./observability/alertmanager.yml
+
+secrets:
+  keycloak_db_password:
+    external: true
+  keycloak_admin_password:
+    external: true
+  app_db_password:
+    external: true
+  vault_app_token:
+    external: true
+  grafana_admin_password:
+    external: true
 
 networks:
   shopflow_dmz:

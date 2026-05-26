@@ -1,0 +1,79 @@
+openapi: 3.0.3
+info:
+  title: ShopFlow Security Lab API
+  version: 1.0.0
+servers:
+  - url: http://localhost
+paths:
+  /api/orders:
+    get:
+      summary: List orders (tenant scoped)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden / OPA deny
+  /api/orders/{orderId}:
+    get:
+      summary: Get order by id (BOLA / OPA)
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: BOLA blocked
+  /api/auth/s2s-token:
+    post:
+      summary: Issue M2M token (client_credentials proxy)
+      responses:
+        '200':
+          description: Token issued
+  /api/internal/orders/tenant-summary/{tenantId}:
+    get:
+      summary: M2M tenant order summary
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+        '403':
+          description: Forbidden
+  /api/auth/refresh:
+    post:
+      summary: Refresh token proxy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Replay / invalid
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

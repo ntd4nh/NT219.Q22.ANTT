@@ -1,0 +1,40 @@
+{
+  "title": "ShopFlow Research Metrics",
+  "uid": "shopflow-research",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP p95 (s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "shopflow:http_request_duration_seconds:p95",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Block rate (5m)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "shopflow:block_rate:ratio5m", "legendFormat": "block_rate" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "BOLA blocks / 5m",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [{ "expr": "increase(shopflow_bola_blocked_total[5m])" }]
+    },
+    {
+      "type": "stat",
+      "title": "OPA denies / 5m",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [{ "expr": "increase(shopflow_opa_denied_total[5m])" }]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

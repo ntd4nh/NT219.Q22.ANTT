@@ -56,3 +56,19 @@ groups:
           severity: critical
         annotations:
           summary: Target {{ $labels.job }} is down
+
+      - alert: HighBlockRate
+        expr: shopflow:block_rate:ratio5m > 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Security block rate above 15% (5m window)
+
+      - alert: HighP95Latency
+        expr: shopflow:http_request_duration_seconds:p95 > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: p95 latency above 500ms for {{ $labels.service }}

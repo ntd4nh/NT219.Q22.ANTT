@@ -3,20 +3,14 @@ import jwt from 'jsonwebtoken'
 import jwksClient from 'jwks-rsa'
 import { validateSecurityConfig, isProductionEnv } from './security-config.js'
 import { incrementWindow, redisPing, tenantRateKey } from './redis-state.js'
+import { incMetric, metricsHandler, metricsMiddleware } from './metrics.js'
 
 export { validateSecurityConfig, isProductionEnv } from './security-config.js'
 export { redisPing } from './redis-state.js'
-
-const counters = {}
-
-export function incMetric(name) {
-  counters[name] = (counters[name] || 0) + 1
-}
-
-export function metricsHandler(_req, res) {
-  const lines = Object.entries(counters).map(([name, value]) => `${name} ${value}`)
-  res.type('text/plain').send(`${lines.join('\n')}\n`)
-}
+export { opaAllow, opaDenyReason, opaAuthorize, isOpaEnabled } from './opa-pep.js'
+export { requireM2mAuth } from './m2m-auth.js'
+export { getM2mToken, s2sFetch } from './s2s-client.js'
+export { incMetric, metricsHandler, metricsMiddleware }
 
 export function createLogger(serviceName) {
   return (event, fields = {}) => {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { buildAuthorizeUrl } from '../auth/pkce.js'
 import './TokensPage.css'
 
 const base64UrlDecode = (value) => {
@@ -58,6 +59,16 @@ export default function TokensPage({ onTokensChange }) {
     setForm((current) => ({ ...current, [key]: event.target.value }))
   }
 
+  const handlePkceLogin = async () => {
+    setTokenResult({ loading: true })
+    try {
+      const url = await buildAuthorizeUrl()
+      window.location.href = url
+    } catch (error) {
+      setTokenResult({ error: error.message, loading: false })
+    }
+  }
+
   const handleFetchToken = async (event) => {
     event.preventDefault()
     setTokenResult({ loading: true })
@@ -75,9 +86,28 @@ export default function TokensPage({ onTokensChange }) {
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error_description || data.error || 'Lỗi lấy token')
-      setTokenResult({ ...data, error: null })
+      setTokenResult({ ...data, error: null, loading: false })
+      onTokensChange({ accessToken: data.access_token, refreshToken: data.refresh_token })
     } catch (error) {
       setTokenResult({ error: error.message, loading: false })
+    }
+  }
+
+  const handleRefreshViaProxy = async () => {
+    if (!tokenResult?.refresh_token) return
+    setTokenResult((current) => ({ ...current, loading: true }))
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: tokenResult.refresh_token }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.message || data.error || 'Refresh failed')
+      setTokenResult({ ...data, error: null, loading: false })
+      onTokensChange({ accessToken: data.access_token, refreshToken: data.refresh_token })
+    } catch (error) {
+      setTokenResult((current) => ({ ...current, error: error.message, loading: false }))
     }
   }
 
@@ -86,7 +116,12 @@ export default function TokensPage({ onTokensChange }) {
       <h1>Tokens & Auth</h1>
       <div className="tokens-grid">
         <div className="panel">
-          <h2>Lấy token từ Keycloak</h2>
+          <h2>Đăng nhập PKCE (user-facing)</h2>
+          <p className="notice">Authorization Code + PKCE — chuẩn SPA flow theo đề cương.</p>
+          <button type="button" className="button-primary" onClick={handlePkceLogin}>
+            Đăng nhập Keycloak (PKCE)
+          </button>
+          <h2 style={{ marginTop: '1.5rem' }}>Lab automation (password grant)</h2>
           <form className="token-form" onSubmit={handleFetchToken}>
             <label>
               Username
@@ -132,7 +167,10 @@ export default function TokensPage({ onTokensChange }) {
                     type="button"
                     onClick={() => onTokensChange({ accessToken: tokenResult.access_token, refreshToken: tokenResult.refresh_token })}
                   >
-                    📋 Dùng token này
+                    Dùng token này
+                  </button>
+                  <button className="button-secondary" type="button" onClick={handleRefreshViaProxy}>
+                    Refresh qua /api/auth/refresh
                   </button>
                 </>
               )}

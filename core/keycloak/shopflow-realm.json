@@ -21,8 +21,15 @@
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "protocol": "openid-connect",
-      "redirectUris": ["http://localhost/*", "http://localhost:5173/*"],
-      "webOrigins": ["http://localhost", "http://localhost:5173"],
+      "redirectUris": [
+        "http://localhost/*",
+        "http://localhost:5173/*",
+        "http://localhost:5173/callback"
+      ],
+      "webOrigins": [
+        "http://localhost",
+        "http://localhost:5173"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },
@@ -52,7 +59,54 @@
       "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": false,
       "standardFlowEnabled": false,
-      "protocol": "openid-connect"
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": [
+        "shopflow-api"
+      ],
+      "optionalClientScopes": [
+        "shopflow-api",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "protocolMappers": [
+        {
+          "name": "audience-shopflow-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "shopflow-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "hardcoded-scope-shopflow-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "scope",
+            "claim.value": "shopflow-api",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "shopflow-api",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
     }
   ],
   "users": [
@@ -63,8 +117,18 @@
       "firstName": "Tenant",
       "lastName": "A",
       "email": "tenant-a@shopflow.local",
-      "credentials": [{ "type": "password", "value": "password123", "temporary": false }],
-      "attributes": { "tenant_id": ["tenant-a"] }
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenant_id": [
+          "tenant-a"
+        ]
+      }
     },
     {
       "username": "tenant-b-user",
@@ -73,8 +137,18 @@
       "firstName": "Tenant",
       "lastName": "B",
       "email": "tenant-b@shopflow.local",
-      "credentials": [{ "type": "password", "value": "password123", "temporary": false }],
-      "attributes": { "tenant_id": ["tenant-b"] }
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenant_id": [
+          "tenant-b"
+        ]
+      }
     }
   ]
 }

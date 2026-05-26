@@ -1,12 +1,17 @@
-import express from 'express'
+﻿import express from 'express'
 import {
   createLogger,
   correlationMiddleware,
   metricsHandler,
+  metricsMiddleware,
   incMetric,
   securityAudit,
   validateSecurityConfig,
   redisPing,
+  requireM2mAuth,
+  opaAllow,
+  opaDenyReason,
+  isOpaEnabled,
 } from '../shared/index.js'
 import { isMarked, markUsed, refreshTokenKey } from '../shared/redis-state.js'
 
@@ -20,10 +25,13 @@ const REFRESH_TTL_SEC = Number(process.env.REFRESH_REPLAY_TTL_SEC || 1800)
 const KEYCLOAK_TOKEN_URL =
   process.env.KEYCLOAK_TOKEN_URL || 'http://keycloak:8080/realms/shopflow/protocol/openid-connect/token'
 const CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID || 'shopflow-spa'
+const M2M_CLIENT_ID = process.env.KEYCLOAK_M2M_CLIENT_ID || 'shopflow-s2s'
+const M2M_CLIENT_SECRET = process.env.KEYCLOAK_M2M_CLIENT_SECRET || 'shopflow-s2s-secret-change-in-prod'
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(correlationMiddleware())
+app.use(metricsMiddleware('auth-service'))
 
 app.get('/metrics', metricsHandler)
 app.get('/health', async (_req, res) => {
@@ -32,6 +40,53 @@ app.get('/health', async (_req, res) => {
     res.json({ status: 'ok', service: 'auth-service', redis })
   } catch (e) {
     res.status(503).json({ status: 'error', service: 'auth-service', message: e.message })
+  }
+})
+
+const m2mAuth = requireM2mAuth({ log })
+
+app.get('/api/internal/auth/status', m2mAuth, async (req, res) => {
+  const opaInput = {
+    action: 'read',
+    subject: { client_id: req.m2m.clientId, sub: req.m2m.sub },
+    resource: { type: 'auth_status' },
+  }
+  if (isOpaEnabled()) {
+    const { allow } = await opaAllow('shopflow.auth', opaInput)
+    if (!allow) {
+      const reason = await opaDenyReason('shopflow.auth', opaInput)
+      incMetric('shopflow_opa_denied_total', { reason_code: reason })
+      return res.status(403).json({ error: 'FORBIDDEN', reason_code: reason })
+    }
+  }
+  const redis = await redisPing()
+  res.json({ service: 'auth-service', redis })
+})
+
+app.post('/api/auth/s2s-token', async (req, res) => {
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: M2M_CLIENT_ID,
+    client_secret: M2M_CLIENT_SECRET,
+  })
+  try {
+    const kcRes = await fetch(KEYCLOAK_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+    const data = await kcRes.json()
+    if (!kcRes.ok) {
+      securityAudit(log, 'M2M_TOKEN_FAILED', {
+        correlationId: req.correlationId,
+        reason: data.error || 'client_credentials_failed',
+      })
+      return res.status(401).json({ error: 'UNAUTHORIZED', message: data.error_description || data.error })
+    }
+    log('m2m_token_issued', { correlationId: req.correlationId, clientId: M2M_CLIENT_ID })
+    res.json(data)
+  } catch (e) {
+    res.status(502).json({ error: 'BAD_GATEWAY', message: e.message })
   }
 })
 

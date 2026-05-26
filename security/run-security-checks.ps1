@@ -171,7 +171,7 @@ function Write-LayerSummaryFile {
 $BaseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { "http://localhost" }
 $BaseUrlTls = if ($env:BASE_URL_TLS) { $env:BASE_URL_TLS } else { "https://localhost" }
 $MtlsUrlDocker = if ($env:MTLS_WEBHOOK_URL_DOCKER) { $env:MTLS_WEBHOOK_URL_DOCKER } else { "https://host.docker.internal:8443/api/billing/webhook" }
-$CertDir = if ($env:CERT_DIR) { $env:CERT_DIR } else { "..\core\certs" }
+$CertDir = if ($env:CERT_DIR) { $env:CERT_DIR } else { (Join-Path $PSScriptRoot "..\core\certs") }
 $KeycloakUrl = if ($env:KEYCLOAK_WELLKNOWN_URL) { $env:KEYCLOAK_WELLKNOWN_URL } else { "http://localhost:8080/realms/shopflow/.well-known/openid-configuration" }
 
 Write-Host "Running layered security checks on $BaseUrl ..."
@@ -302,26 +302,26 @@ Start-Layer -Name "Observability"
 $promUrl = if ($env:PROMETHEUS_READY_URL) { $env:PROMETHEUS_READY_URL } else { "http://localhost:9090/-/ready" }
 $lokiUrl = if ($env:LOKI_READY_URL) { $env:LOKI_READY_URL } else { "http://localhost:3100/ready" }
 Invoke-ExpectedStatus -Name "OBS_prometheus_ready" -Method "GET" -Uri $promUrl -Headers @{} -ExpectedStatus 200 | Out-Null
-$lokiOk = $false
+$lokiStatus = -1
 foreach ($i in 1..3) {
-  if (Invoke-ExpectedStatus -Name "OBS_loki_ready" -Method "GET" -Uri $lokiUrl -Headers @{} -ExpectedStatus 200) {
-    $lokiOk = $true
-    break
+  try {
+    $lokiStatus = [int](& curl.exe -s -o NUL -w "%{http_code}" --max-time 10 $lokiUrl)
+  } catch {
+    $lokiStatus = -1
   }
+  if ($lokiStatus -eq 200) { break }
   Start-Sleep -Seconds 2
 }
-if (-not $lokiOk) {
-  # undo last failed count from final retry; accept 503 as warming
-  $script:LayerStats["Observability"].failed--
-  $script:FailedTotal--
-  $lokiWarm = [int](& curl.exe -s -o NUL -w "%{http_code}" --max-time 10 $lokiUrl)
-  if ($lokiWarm -eq 503) {
-    Write-Host '[PASS] OBS_loki_ready -> 503 (warming, acceptable in lab)' -ForegroundColor Green
-    Record-Check $true
-  } else {
-    Write-Host "[FAIL] OBS_loki_ready -> not ready ($lokiWarm)" -ForegroundColor Red
-    Record-Check $false
-  }
+
+if ($lokiStatus -eq 200) {
+  Write-Host "[PASS] OBS_loki_ready -> 200" -ForegroundColor Green
+  Record-Check $true
+} elseif ($lokiStatus -eq 503) {
+  Write-Host "[PASS] OBS_loki_ready -> 503 (warming, acceptable in lab)" -ForegroundColor Green
+  Record-Check $true
+} else {
+  Write-Host "[FAIL] OBS_loki_ready -> expected 200 or 503 but got $lokiStatus" -ForegroundColor Red
+  Record-Check $false
 }
 End-Layer -Name "Observability"
 

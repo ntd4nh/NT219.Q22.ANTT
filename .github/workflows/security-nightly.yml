@@ -1,0 +1,81 @@
+name: security-slow-path
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  security-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install PowerShell
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y powershell
+
+      - name: Run full security gate (stack + regression)
+        run: bash ci/run-security-gate.sh
+
+      - name: OPA policy compile
+        run: |
+          docker run --rm -v "${{ github.workspace }}/core/opa/policies:/policies" openpolicyagent/opa:0.68.0 check /policies
+
+      - name: ZAP OpenAPI scan
+        uses: zaproxy/action-api-scan@v0.7.0
+        with:
+          target: security/openapi.yaml
+          format: openapi
+          cmd_options: '-t security/openapi.yaml'
+
+      - name: Schemathesis fuzz
+        run: |
+          pip install schemathesis
+          schemathesis run security/openapi.yaml --base-url=http://localhost --checks=all --max-examples=10 --hypothesis-max-examples=10
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-slow-artifacts
+          retention-days: 30
+          path: |
+            docs/evidence/
+            reports/
+
+  cosign-images:
+    runs-on: ubuntu-latest
+    needs: security-gate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Build and sign service images (digest record)
+        run: |
+          cd core
+          docker compose build order-service user-service billing-service auth-service
+          for img in order-service user-service billing-service auth-service; do
+            id=$(docker images --format '{{.ID}}' "core-${img}" | head -1)
+            echo "${img}=${id}" >> ../build-image-digests.txt
+            docker save "core-${img}:latest" -o "../${img}.tar" 2>/dev/null || true
+          done
+          cosign sign-blob --yes --bundle services-images.cosign.bundle build-image-digests.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-signing-record
+          retention-days: 90
+          path: |
+            build-image-digests.txt
+            services-images.cosign.bundle

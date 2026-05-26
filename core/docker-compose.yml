@@ -22,6 +22,20 @@ services:
     networks:
       - dmz
 
+  internal-mtls-proxy:
+    image: nginx:1.27-alpine
+    container_name: internal-mtls-proxy
+    ports:
+      - "9443:9443"
+    volumes:
+      - ./nginx/internal-mtls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - kong
+    networks:
+      - dmz
+      - private
+
   billing-mtls-proxy:
     image: nginx:1.27-alpine
     container_name: billing-mtls-proxy
@@ -34,6 +48,22 @@ services:
       - kong
     networks:
       - dmz
+      - private
+
+  opa:
+    image: openpolicyagent/opa:0.68.0
+    container_name: opa
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --log-level=info
+      - /policies
+    volumes:
+      - ./opa/policies:/policies:ro
+    ports:
+      - "8181:8181"
+    networks:
       - private
 
   redis:
@@ -160,6 +190,14 @@ services:
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
       REDIS_URL: redis://redis:6379
+      OPA_URL: http://opa:8181
+      OPA_ENABLED: ${OPA_ENABLED:-true}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
+      KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
+      KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
+      KEYCLOAK_M2M_SCOPE: ${KEYCLOAK_M2M_SCOPE:-shopflow-api}
+      KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/shopflow/protocol/openid-connect/token
+      USER_INTERNAL_URL: http://user-service:8080
       SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       app-db:
@@ -168,6 +206,8 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
+      opa:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -187,10 +227,16 @@ services:
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       SSRF_ALLOWLIST: cdn.shopflow.local,imgur.com
       REDIS_URL: redis://redis:6379
+      OPA_URL: http://opa:8181
+      OPA_ENABLED: ${OPA_ENABLED:-true}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
+      KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
+      KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
       SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       - keycloak
       - redis
+      - opa
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -212,10 +258,16 @@ services:
       VAULT_REQUIRED: ${VAULT_REQUIRED:-false}
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
       REDIS_URL: redis://redis:6379
+      OPA_URL: http://opa:8181
+      OPA_ENABLED: ${OPA_ENABLED:-true}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
+      KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
+      KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
       SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       - vault
       - redis
+      - opa
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -233,11 +285,17 @@ services:
       PORT: 8080
       KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/shopflow/protocol/openid-connect/token
       KEYCLOAK_CLIENT_ID: shopflow-spa
+      KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
+      KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
+      KEYCLOAK_M2M_SCOPE: ${KEYCLOAK_M2M_SCOPE:-shopflow-api}
+      OPA_URL: http://opa:8181
+      OPA_ENABLED: ${OPA_ENABLED:-true}
       REDIS_URL: redis://redis:6379
       SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       - keycloak
       - redis
+      - opa
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -278,6 +336,7 @@ services:
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./observability/recording_rules.yml:/etc/prometheus/recording_rules.yml:ro
     ports:
       - "9090:9090"
     networks:
@@ -291,6 +350,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
     ports:
       - "3000:3000"
     depends_on:
