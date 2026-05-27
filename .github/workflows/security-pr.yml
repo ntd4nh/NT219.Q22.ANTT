@@ -1,13 +1,16 @@
 name: security-pr-fast
 
+# TEMPORARY: Paused for team dev — see docs/CI-SECURITY-GATE.md
+# To re-enable auto-run on PR, restore the pull_request block below.
 on:
-  pull_request:
-    paths:
-      - 'services/**'
-      - 'core/**'
-      - 'security/**'
-      - 'frontend/**'
-      - '.github/workflows/**'
+  workflow_dispatch:
+  # pull_request:
+  #   paths:
+  #     - 'services/**'
+  #     - 'core/**'
+  #     - 'security/**'
+  #     - 'frontend/**'
+  #     - '.github/workflows/**'
 
 permissions:
   contents: read
