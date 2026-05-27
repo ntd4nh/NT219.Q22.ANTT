@@ -1,5 +1,8 @@
 # AquaTrade Backend Service
 
+> Deprecated for integration runtime.  
+> Main runtime backend is now the core security stack in `core/` + `services/`.
+
 This backend service is a minimal API scaffold for `AquaTrade_B2B-Seafood-Marketplace`.
 It provides:
 

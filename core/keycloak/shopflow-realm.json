@@ -11,6 +11,13 @@
   "accessTokenLifespan": 900,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      { "name": "buyer" },
+      { "name": "seller" },
+      { "name": "admin" }
+    ]
+  },
   "clients": [
     {
       "clientId": "shopflow-spa",
@@ -128,7 +135,10 @@
         "tenant_id": [
           "tenant-a"
         ]
-      }
+      },
+      "realmRoles": [
+        "buyer"
+      ]
     },
     {
       "username": "tenant-b-user",
@@ -148,7 +158,33 @@
         "tenant_id": [
           "tenant-b"
         ]
-      }
+      },
+      "realmRoles": [
+        "seller"
+      ]
+    },
+    {
+      "username": "admin-user",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "ShopFlow",
+      "email": "admin@shopflow.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password123",
+          "temporary": false
+        }
+      ],
+      "attributes": {
+        "tenant_id": [
+          "tenant-a"
+        ]
+      },
+      "realmRoles": [
+        "admin"
+      ]
     }
   ]
 }

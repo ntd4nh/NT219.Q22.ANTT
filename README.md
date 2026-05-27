@@ -87,6 +87,7 @@ npm install
 npm run dev
 ```
 
+- Frontend mặc định đã cutover sang UI AquaTrade (không dùng backend demo `AquaTrade_B2B-Seafood-Marketplace/backend` trong runtime chính).
 - Vite proxy: `/api` -> `http://localhost`
 - Token endpoint: `http://localhost:8080/realms/shopflow/protocol/openid-connect/token`
 - Security Lab đã bám case D1-D4 theo `docs/api-contract.md`

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import LoginPage from './pages/login/LoginPage';
+import AuthCallbackPage from './pages/login/AuthCallbackPage';
 import RegisterPage from './pages/login/RegisterPage';
 import ForgotPasswordPage from './pages/login/ForgotPasswordPage';
 import OtpPage from './pages/login/OtpPage';
@@ -24,6 +25,7 @@ import CategoryConfig from './pages/admin/CategoryConfig';
 import LabInput from './pages/admin/LabInput';
 import AquaMarketReports from './pages/admin/AquaMarketReports';
 import BrandLogo from './assets/images/logo/brand.png';
+import RequireAuth from './auth/RequireAuth';
 
 // ================= LAYOUT ĐIỀU HƯỚNG DÙNG CHUNG (ADMIN) =================
 const AdminLayout = () => {
@@ -186,6 +188,7 @@ const AnimatedRoutes = () => {
         
         {/* Auth Pages */}
         <Route path="/login" element={<PageTransition><LoginPage /></PageTransition>} />
+        <Route path="/callback" element={<PageTransition><AuthCallbackPage /></PageTransition>} />
         <Route path="/register" element={<PageTransition><RegisterPage /></PageTransition>} />
         <Route path="/forgot-password" element={<PageTransition><ForgotPasswordPage /></PageTransition>} />
         <Route path="/verify-otp" element={<PageTransition><OtpPage /></PageTransition>} />
@@ -198,11 +201,11 @@ const AnimatedRoutes = () => {
         <Route path="/route-optimization" element={<PageTransition><RouteOptimizationResult /></PageTransition>} />
         
         {/* Dashboards */}
-        <Route path="/seller" element={<PageTransition><SellerDashboard /></PageTransition>} />
-        <Route path="/buyer" element={<PageTransition><BuyerDashboard /></PageTransition>} />
+        <Route path="/seller" element={<RequireAuth><PageTransition><SellerDashboard /></PageTransition></RequireAuth>} />
+        <Route path="/buyer" element={<RequireAuth><PageTransition><BuyerDashboard /></PageTransition></RequireAuth>} />
 
         {/* Admin Section */}
-        <Route path="/admin" element={<PageTransition><AdminLayout /></PageTransition>}>
+        <Route path="/admin" element={<RequireAuth><PageTransition><AdminLayout /></PageTransition></RequireAuth>}>
           <Route index element={<AdminDashboard />} />
           <Route path="reports" element={<AquaMarketReports />} />
           <Route path="grading-standards" element={<GradingStandards />} />

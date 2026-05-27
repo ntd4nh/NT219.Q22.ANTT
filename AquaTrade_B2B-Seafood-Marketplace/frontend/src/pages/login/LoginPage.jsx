@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+import { Link } from "react-router-dom";
+import { startPkceLogin } from "../../api/authApi";
 
 export default function LoginPage() {
-    const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -12,67 +10,23 @@ export default function LoginPage() {
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
 
-    const navigateToRole = (role) => {
-        if (role === "buyer") navigate("/buyer");
-        else if (role === "seller") navigate("/seller");
-        else if (role === "admin") navigate("/admin");
-        else navigate("/");
-    };
-
-    const submitLogin = async (username, passwordValue) => {
+    const handlePkceLogin = async () => {
         setError("");
         setSuccess(false);
         setLoading(true);
 
         try {
-            const response = await fetch(`${API_URL}/api/auth/login`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ username, password: passwordValue }),
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-                setError(data.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại.");
-                setLoading(false);
-                return null;
-            }
-
-            localStorage.setItem("access_token", data.access_token);
-            localStorage.setItem("refresh_token", data.refresh_token);
-            setLoading(false);
             setSuccess(true);
-            return data;
+            await startPkceLogin();
         } catch (err) {
             setLoading(false);
             setError("Không thể kết nối đến máy chủ đăng nhập. Vui lòng thử lại.");
-            return null;
         }
     };
 
     const handleLogin = async (e) => {
         e.preventDefault();
-        const data = await submitLogin(identity, password);
-        if (data) {
-            setTimeout(() => {
-                setSuccess(false);
-                navigateToRole(data.role);
-            }, 700);
-        }
-    };
-
-    const handleQuickLogin = async (username, passwordValue) => {
-        setIdentity(username);
-        setPassword(passwordValue);
-        const data = await submitLogin(username, passwordValue);
-        if (data) {
-            setTimeout(() => {
-                setSuccess(false);
-                navigateToRole(data.role);
-            }, 700);
-        }
+        await handlePkceLogin();
     };
 
     return (
@@ -258,7 +212,7 @@ export default function LoginPage() {
                         <div className="grid grid-cols-2 gap-3">
                             <button
                                 type="button"
-                                onClick={() => handleQuickLogin("buyer", "Buyer123#")}
+                                onClick={handlePkceLogin}
                                 className="flex flex-col items-center justify-center py-3 border border-teal-200 bg-teal-50 hover:bg-teal-100 rounded-xl transition-all group"
                             >
                                 <span className="material-symbols-outlined text-teal-600 mb-1 group-hover:scale-110 transition-transform">shopping_cart</span>
@@ -267,7 +221,7 @@ export default function LoginPage() {
 
                             <button
                                 type="button"
-                                onClick={() => handleQuickLogin("seller", "Seller123#")}
+                                onClick={handlePkceLogin}
                                 className="flex flex-col items-center justify-center py-3 border border-orange-200 bg-orange-50 hover:bg-orange-100 rounded-xl transition-all group"
                             >
                                 <span className="material-symbols-outlined text-orange-600 mb-1 group-hover:scale-110 transition-transform">storefront</span>
@@ -276,7 +230,7 @@ export default function LoginPage() {
 
                             <button
                                 type="button"
-                                onClick={() => handleQuickLogin("admin", "Admin123#")}
+                                onClick={handlePkceLogin}
                                 className="flex flex-col items-center justify-center py-3 border border-purple-200 bg-purple-50 hover:bg-purple-100 rounded-xl transition-all group"
                             >
                                 <span className="material-symbols-outlined text-purple-600 mb-1 group-hover:scale-110 transition-transform">admin_panel_settings</span>
@@ -285,7 +239,7 @@ export default function LoginPage() {
 
                             <button
                                 type="button"
-                                onClick={() => handleQuickLogin("buyer", "Buyer123#")}
+                                onClick={handlePkceLogin}
                                 className="flex flex-col items-center justify-center py-3 border border-gray-200 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all group"
                             >
                                 <span className="material-symbols-outlined text-gray-600 mb-1 group-hover:scale-110 transition-transform">explore</span>

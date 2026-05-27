@@ -37,6 +37,20 @@ const m2mAuth = requireM2mAuth({ log })
 const rateLimit = tenantRateLimit()
 const USER_INTERNAL_BASE = process.env.USER_INTERNAL_URL || 'http://user-service:8080'
 
+async function ensureTenant(req, res) {
+  const tenantId = req.user?.tenantId
+  if (!tenantId) {
+    securityAudit(log, 'AUTHZ_DENIED', {
+      correlationId: req.correlationId,
+      reason: 'MISSING_TENANT_CLAIM',
+      path: req.path,
+    })
+    res.status(403).json({ error: 'FORBIDDEN', message: 'Missing tenant_id claim' })
+    return null
+  }
+  return tenantId
+}
+
 app.get('/metrics', metricsHandler)
 
 app.get('/health', async (_req, res) => {
@@ -122,6 +136,76 @@ app.get('/api/orders/:orderId', auth, rateLimit, async (req, res) => {
     return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant access denied' })
   }
   res.json(order)
+})
+
+app.get('/api/catalog/lots', auth, rateLimit, async (req, res) => {
+  const tenantId = await ensureTenant(req, res)
+  if (!tenantId) return
+
+  const { rows } = await pool.query(
+    `SELECT id, tenant_id, sku, name, species, quality_grade, available_kg, unit_price_vnd
+     FROM catalog_lots
+     WHERE tenant_id = $1
+     ORDER BY created_at DESC`,
+    [tenantId],
+  )
+  res.json({ lots: rows })
+})
+
+app.get('/api/vendors/me', auth, rateLimit, async (req, res) => {
+  const tenantId = await ensureTenant(req, res)
+  if (!tenantId) return
+
+  const { rows } = await pool.query(
+    `SELECT tenant_id, company_name, province, contact_name, role
+     FROM vendor_profiles
+     WHERE tenant_id = $1
+     LIMIT 1`,
+    [tenantId],
+  )
+  if (!rows.length) return res.status(404).json({ error: 'NOT_FOUND', message: 'Vendor profile not found' })
+  res.json(rows[0])
+})
+
+app.get('/api/shipments', auth, rateLimit, async (req, res) => {
+  const tenantId = await ensureTenant(req, res)
+  if (!tenantId) return
+
+  const { rows } = await pool.query(
+    `SELECT id, tenant_id, lot_id, shipment_status, eta_date, route_summary
+     FROM shipments
+     WHERE tenant_id = $1
+     ORDER BY eta_date ASC`,
+    [tenantId],
+  )
+  res.json({ shipments: rows })
+})
+
+app.post('/api/quotes', auth, rateLimit, async (req, res) => {
+  const tenantId = await ensureTenant(req, res)
+  if (!tenantId) return
+
+  const { lot_id: lotId, quantity_kg: quantityKg } = req.body || {}
+  if (!lotId || !quantityKg) return res.status(400).json({ error: 'BAD_REQUEST', message: 'lot_id and quantity_kg are required' })
+
+  const lotResult = await pool.query(
+    'SELECT id, tenant_id, unit_price_vnd FROM catalog_lots WHERE id = $1 LIMIT 1',
+    [lotId],
+  )
+  if (!lotResult.rows.length) return res.status(404).json({ error: 'NOT_FOUND', message: 'Lot not found' })
+  const lot = lotResult.rows[0]
+  if (lot.tenant_id !== tenantId) {
+    return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant quote denied' })
+  }
+
+  const totalVnd = Number(quantityKg) * Number(lot.unit_price_vnd)
+  const quoteId = `q-${Date.now()}`
+  await pool.query(
+    `INSERT INTO quotes (id, tenant_id, lot_id, quantity_kg, total_vnd, quote_status)
+     VALUES ($1, $2, $3, $4, $5, 'draft')`,
+    [quoteId, tenantId, lotId, Number(quantityKg), totalVnd],
+  )
+  res.status(201).json({ id: quoteId, tenant_id: tenantId, lot_id: lotId, quantity_kg: Number(quantityKg), total_vnd: totalVnd, quote_status: 'draft' })
 })
 
 app.get('/api/internal/orders/tenant-summary/:tenantId', m2mAuth, async (req, res) => {

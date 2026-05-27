@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Fish, Store, ShoppingCart, Wallet, Heart, BellRing,
   Search, Bell, User, ArrowUpDown, List, Grid,
@@ -12,6 +12,7 @@ import shrimp_head_main from '../../assets/images/productimg/dau-tom-su-dong-lan
 import pangasius_powder_main from '../../assets/images/productimg/bot-ca-tra.jpg';
 import pangasius_oil_main from '../../assets/images/productimg/mo-ca-tra.jpg';
 import BrandLogo from '../../assets/images/logo/brand.png';
+import { fetchMyOrders, fetchMyProfile } from '../../api/domainApi';
 
 
 
@@ -20,6 +21,22 @@ const shrimp_shell_main = 'https://via.placeholder.com/600x600/fff3e0/e65100?tex
 
 const BuyerDashboard = () => {
   const navigate = useNavigate();
+  const [apiOverview, setApiOverview] = useState({ loading: true, error: '', profile: null, orders: [] });
+  useEffect(() => {
+    let active = true;
+    Promise.all([fetchMyProfile(), fetchMyOrders()])
+      .then(([profile, orders]) => {
+        if (!active) return;
+        setApiOverview({ loading: false, error: '', profile, orders });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setApiOverview({ loading: false, error: error.message, profile: null, orders: [] });
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   // 1. DỮ LIỆU ĐỘNG (MOCK DATA)
   const mockLots = [
     {
@@ -272,6 +289,17 @@ const BuyerDashboard = () => {
         </header>
 
         <div className="flex-1 overflow-auto p-8 space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+            {apiOverview.loading ? (
+              <p className="text-sm text-gray-500">Đang đồng bộ dữ liệu từ backend gốc...</p>
+            ) : apiOverview.error ? (
+              <p className="text-sm text-red-600">Không đồng bộ được backend: {apiOverview.error}</p>
+            ) : (
+              <p className="text-sm text-gray-700">
+                Tenant: <strong>{apiOverview.profile?.tenantId}</strong> • Đơn hàng backend: <strong>{apiOverview.orders.length}</strong>
+              </p>
+            )}
+          </div>
           {/* STATS */}
           <div className="grid grid-cols-4 gap-4">
             <StatSmall label="Lô hàng khả dụng" value="142" sub="↑ 18 lô mới" color="teal" />

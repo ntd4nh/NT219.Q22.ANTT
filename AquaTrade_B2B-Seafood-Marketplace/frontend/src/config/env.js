@@ -1,0 +1,5 @@
+export const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+export const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://localhost:8080'
+export const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'shopflow'
+export const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'shopflow-spa'
+export const OIDC_REDIRECT_URI = import.meta.env.VITE_OIDC_REDIRECT_URI || 'http://localhost:5173/callback'
