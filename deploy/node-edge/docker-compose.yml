@@ -26,7 +26,6 @@ services:
       - kong
     networks:
       - shopflow_dmz
-      - shopflow_private
 
   kong:
     image: kong:3.7

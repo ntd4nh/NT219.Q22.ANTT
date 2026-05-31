@@ -3,8 +3,9 @@
 # Usage: powershell -ExecutionPolicy Bypass -File .\deploy\create-networks.ps1
 
 $networks = @(
-    @{ name = "shopflow_dmz";     description = "DMZ / edge-facing (Nginx WAF + Kong)" },
-    @{ name = "shopflow_private"; description = "Private subnet (all internal services)" }
+    @{ name = "shopflow_dmz";     description = "DMZ / edge-facing (Nginx WAF only — no private access)" },
+    @{ name = "shopflow_private"; description = "Private subnet (Kong, microservices, Redis, OPA, Vault, Keycloak)" },
+    @{ name = "shopflow_data";    description = "Data zone (app-db + order-service only — isolated from other zones)" }
 )
 
 foreach ($net in $networks) {

@@ -16,7 +16,7 @@ $root    = Split-Path -Parent $PSScriptRoot
 $envFile = "$root\core\.env"
 
 if (-not (Test-Path $envFile)) {
-    Write-Warning ".env not found at $envFile — copying from .env.example"
+    Write-Warning ".env not found at $envFile - copying from .env.example"
     Copy-Item "$root\core\.env.example" $envFile
     Write-Host "Edit $envFile and set VAULT_APP_TOKEN after running Vault init." -ForegroundColor Yellow
 }
@@ -47,7 +47,8 @@ function Start-Node {
 # ---------------------------------------------------------------------------
 function Wait-Healthy {
     param([string]$Container, [int]$TimeoutSec = 90)
-    Write-Host "    Waiting for $Container to become healthy (up to ${TimeoutSec}s)..." -ForegroundColor Yellow
+    
+    Write-Host ('    Waiting for {0} to become healthy (up to {1}s)...' -f $Container, $TimeoutSec) -ForegroundColor Yellow
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
         $status = docker inspect --format "{{.State.Health.Status}}" $Container 2>$null
@@ -57,7 +58,7 @@ function Wait-Healthy {
         }
         Start-Sleep -Seconds 3
     }
-    Write-Warning "$Container did not become healthy within ${TimeoutSec}s — proceeding anyway."
+    Write-Warning "$Container did not become healthy within ${TimeoutSec}s - proceeding anyway."
 }
 
 # ---------------------------------------------------------------------------
