@@ -179,6 +179,32 @@ services:
     networks:
       - shopflow_private
 
+  loki:
+    image: grafana/loki:3.0.0
+    command: -config.file=/etc/loki/local-config.yaml
+    configs:
+      - source: loki_yml
+        target: /etc/loki/local-config.yaml
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    networks:
+      - shopflow_private
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    command: -config.file=/etc/promtail/config.yml
+    configs:
+      - source: promtail_yml
+        target: /etc/promtail/config.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      mode: global
+    networks:
+      - shopflow_private
+
   prometheus:
     image: prom/prometheus:v2.54.1
     configs:
@@ -219,6 +245,10 @@ services:
 configs:
   kong_yml:
     file: ./kong/kong.yml
+  loki_yml:
+    file: ./loki/loki-config.yml
+  promtail_yml:
+    file: ./promtail/promtail-config.yml
   opa_orders_rego:
     file: ./opa/policies/orders.rego
   opa_users_rego:

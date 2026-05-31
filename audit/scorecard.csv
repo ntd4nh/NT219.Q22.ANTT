@@ -1,0 +1,41 @@
+criterion_id,axis,description,status,score,evidence_path,deploy_path,audit_date,notes
+A1,A,backend-ci compose validate,PASS,1.0,core/docker-compose.yml config exit 0,core-compose,2026-05-30,
+A2,A,security-pr auto on PR,FAIL,0.0,.github/workflows/security-pr.yml dispatch-only,repo,2026-05-30,CI-SECURITY-GATE.md paused
+A3,A,security-nightly auto,FAIL,0.0,.github/workflows/security-nightly.yml dispatch-only,repo,2026-05-30,
+A4,A,Semgrep SAST,PARTIAL,0.5,security-pr.yml manual,repo,2026-05-30,
+A5,A,npm audit shared,PARTIAL,0.5,security-pr.yml step,repo,2026-05-30,
+A6,A,ESLint frontend,FAIL,0.0,frontend npm run lint exit 1,frontend,2026-05-30,AuthCallback setState in effect
+A7,A,Gitleaks scan,PARTIAL,0.5,security-pr.yml manual,repo,2026-05-30,
+A8,A,compose config all paths,PASS,1.0,core+deploy*7+stack config OK,all-paths,2026-05-30,
+A9,A,contract test in CI,FAIL,0.0,backend-ci.yml no test step,repo,2026-05-30,
+A10,A,OPA policy check,PARTIAL,0.5,core/opa/policies/*.rego,core,2026-05-30,no opa check in CI
+A11,A,SBOM cosign PR,PARTIAL,0.5,security-pr.yml manual,repo,2026-05-30,
+A12,A,verify-final-backend static,PASS,1.0,scripts/verify-final-backend.ps1,repo,2026-05-30,
+B1,B,order-service runtime,PASS,1.0,docs/evidence/docker-compose-ps.txt,core-compose,2026-05-30,
+B2,B,user-service runtime,PASS,1.0,docs/evidence/docker-compose-ps.txt,core-compose,2026-05-30,
+B3,B,billing-service runtime,PASS,1.0,docs/evidence/docker-compose-ps.txt,core-compose,2026-05-30,
+B4,B,auth-service runtime,PASS,1.0,docs/evidence/docker-compose-ps.txt,core-compose,2026-05-30,
+B5,B,edge kong routing,PASS,1.0,core/kong/kong.yml,core-compose,2026-05-30,
+B6,B,keycloak realm tenants,PASS,1.0,core/keycloak/shopflow-realm.json,core-compose,2026-05-30,
+B7,B,vault bootstrap,PASS,1.0,core/vault/init-dev.ps1,core-compose,2026-05-30,
+B8,B,redis shared state,PARTIAL,0.5,services/shared/redis-state.js,core-compose,2026-05-30,redis missing in evidence docker-ps
+B9,B,security gate 18/18,PARTIAL,0.5,docs/evidence/security-layer-summary.txt,core-compose,2026-05-30,stale 2026-05-26
+B10,B,opa s2s mtls tests,PASS,1.0,security/test-*.ps1,core-compose,2026-05-30,
+B11,B,g3 benchmark drill,PASS,1.0,docs/evidence/g3-benchmark-*,core-compose,2026-05-30,
+B12,B,monolith one-command,PASS,1.0,core/docker-compose.yml,core-compose,2026-05-30,
+B13,B,multi-node deploy gate,PARTIAL,0.5,deploy/deploy-all.ps1,deploy-untracked,2026-05-30,no evidence
+B14,B,swarm runtime,FAIL,0.0,core/docker-stack.yml config only,swarm,2026-05-30,no deploy script
+B15,B,alertmanager pipeline,FAIL,0.0,core/loki/loki-config.yml localhost:9093,core-compose,2026-05-30,no alertmanager service
+B16,B,frontend PKCE,PASS,1.0,frontend/src/auth/pkce.js,frontend,2026-05-30,
+C1,C,edge WAF kong,PASS,1.0,core/nginx core/kong,core-compose,2026-05-30,
+C2,C,OIDC PKCE,PASS,1.0,frontend/src/auth/pkce.js,frontend,2026-05-30,
+C3,C,D1-D4 emulation,PASS,1.0,docs/evidence/security-layer-summary.txt,core-compose,2026-05-30,stale evidence
+C4,C,authZ BOLA server-side,PASS,1.0,services/order-service,core-compose,2026-05-30,
+C5,C,OPA multi-service,PARTIAL,0.5,core/opa docker-stack OPA_ENABLED false,all-paths,2026-05-30,
+C6,C,webhook HMAC mTLS,PASS,1.0,billing-mtls-proxy D3,core-compose,2026-05-30,
+C7,C,S2S mTLS credentials,PASS,1.0,internal-mtls-proxy test scripts,core-compose,2026-05-30,
+C8,C,Vault KV runtime,PASS,1.0,core/vault billing-service,core-compose,2026-05-30,
+C9,C,Vault Transit envelope,FAIL,0.0,docs/books/Kien-truc F4 no service code,services,2026-05-30,
+C10,C,logs correlation-id,PASS,1.0,services/shared kong plugin,core-compose,2026-05-30,
+C11,C,metrics MTTD MTTR,PASS,1.0,docs/evidence/mttd-mttr-*,core-compose,2026-05-30,
+C12,C,multi-node HA topology,PARTIAL,0.5,deploy+stack skeleton,deploy+swarm,2026-05-30,

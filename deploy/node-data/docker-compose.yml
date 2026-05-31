@@ -1,0 +1,30 @@
+# Node: data  — trust zone: Data Zone
+# Services: PostgreSQL application database
+# Startup order: 1st — app services depend on app-db being healthy
+# Usage: docker compose -p shopflow-data --env-file ../../core/.env up -d
+
+services:
+  app-db:
+    image: postgres:16-alpine
+    container_name: app-db
+    environment:
+      POSTGRES_DB: shopflow
+      POSTGRES_USER: shopflow_app
+      POSTGRES_PASSWORD: shopflow_app
+    volumes:
+      - ../../core/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopflow_app -d shopflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - shopflow_private
+
+volumes:
+  app-db-data:
+
+networks:
+  shopflow_private:
+    external: true

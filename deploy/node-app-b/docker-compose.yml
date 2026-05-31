@@ -1,0 +1,60 @@
+# Node: app-b  — trust zone: App Private Subnet
+# Services: billing-service, auth-service
+# Startup order: 4th (parallel with node-app-a) — after node-security + node-identity
+# Usage: docker compose -p shopflow-app-b --env-file ../../core/.env up -d
+
+services:
+  billing-service:
+    build:
+      context: ../../services
+      dockerfile: billing-service/Dockerfile
+    container_name: billing-service
+    environment:
+      PORT: 8080
+      HMAC_SECRET: ${HMAC_SECRET:-lab-hmac-secret-change-me}
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
+      VAULT_REQUIRED: ${VAULT_REQUIRED:-false}
+      TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
+      REDIS_URL: redis://redis:6379
+      OPA_URL: http://opa:8181
+      OPA_ENABLED: ${OPA_ENABLED:-true}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
+      KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
+      KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shopflow_private
+
+  auth-service:
+    build:
+      context: ../../services
+      dockerfile: auth-service/Dockerfile
+    container_name: auth-service
+    environment:
+      PORT: 8080
+      KEYCLOAK_TOKEN_URL: http://keycloak:8080/realms/shopflow/protocol/openid-connect/token
+      KEYCLOAK_CLIENT_ID: shopflow-spa
+      KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
+      KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
+      KEYCLOAK_M2M_SCOPE: ${KEYCLOAK_M2M_SCOPE:-shopflow-api}
+      OPA_URL: http://opa:8181
+      OPA_ENABLED: ${OPA_ENABLED:-true}
+      REDIS_URL: redis://redis:6379
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shopflow_private
+
+networks:
+  shopflow_private:
+    external: true
