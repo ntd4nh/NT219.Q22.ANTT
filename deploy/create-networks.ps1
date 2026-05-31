@@ -3,9 +3,9 @@
 # Usage: powershell -ExecutionPolicy Bypass -File .\deploy\create-networks.ps1
 
 $networks = @(
-    @{ name = "shopflow_dmz";     description = "DMZ / edge-facing (Nginx WAF only — no private access)" },
+    @{ name = "shopflow_dmz";     description = "DMZ / edge-facing (Nginx WAF only - no private access)" },
     @{ name = "shopflow_private"; description = "Private subnet (Kong, microservices, Redis, OPA, Vault, Keycloak)" },
-    @{ name = "shopflow_data";    description = "Data zone (app-db + order-service only — isolated from other zones)" }
+    @{ name = "shopflow_data";    description = "Data zone (app-db + order-service only - isolated from other zones)" }
 )
 
 foreach ($net in $networks) {
@@ -14,7 +14,7 @@ foreach ($net in $networks) {
         Write-Host "[SKIP] $($net.name) already exists ($($net.description))"
     } else {
         docker network create --driver bridge $net.name | Out-Null
-        Write-Host "[OK]   Created $($net.name) — $($net.description)"
+        Write-Host "[OK]   Created $($net.name) - $($net.description)"
     }
 }
 Write-Host ""

@@ -111,7 +111,7 @@ function Invoke-ExpectedStatusDocker {
   $actualStatus = -1
   try {
     $absCert = (Resolve-Path $CertDir).Path
-    $dockerArgs = @("run", "--rm", "--network", "core_dmz", "-v", "${absCert}:/certs:ro")
+    $dockerArgs = @("run", "--rm", "--network", $DockerNetwork, "-v", "${absCert}:/certs:ro")
     $bodyFile = $null
     if ($Body -ne "") {
       $bodyFile = Join-Path $env:TEMP "shopflow-docker-$([guid]::NewGuid().ToString('N')).json"
@@ -173,6 +173,7 @@ $BaseUrlTls = if ($env:BASE_URL_TLS) { $env:BASE_URL_TLS } else { "https://local
 $MtlsUrlDocker = if ($env:MTLS_WEBHOOK_URL_DOCKER) { $env:MTLS_WEBHOOK_URL_DOCKER } else { "https://host.docker.internal:8443/api/billing/webhook" }
 $CertDir = if ($env:CERT_DIR) { $env:CERT_DIR } else { (Join-Path $PSScriptRoot "..\core\certs") }
 $KeycloakUrl = if ($env:KEYCLOAK_WELLKNOWN_URL) { $env:KEYCLOAK_WELLKNOWN_URL } else { "http://localhost:8080/realms/shopflow/.well-known/openid-configuration" }
+$DockerNetwork = if ($env:DOCKER_NETWORK) { $env:DOCKER_NETWORK } else { "core_dmz" }
 
 Write-Host "Running layered security checks on $BaseUrl ..."
 Write-Host "Matrix: security/layered-checks.md"
@@ -275,7 +276,7 @@ try {
   $bodyFile = Join-Path $env:TEMP "shopflow-mtls-nocert-$([guid]::NewGuid().ToString('N')).json"
   [System.IO.File]::WriteAllText($bodyFile, $forgedBody, [System.Text.UTF8Encoding]::new($false))
   $dockerArgs = @(
-    "run", "--rm", "--network", "core_dmz",
+    "run", "--rm", "--network", $DockerNetwork,
     "-v", "${absCert}:/certs:ro",
     "-v", "${bodyFile}:/tmp/body.json:ro",
     "curlimages/curl:8.10.1", "curl", "-sk", "-o", "/dev/null", "-w", "%{http_code}",
