@@ -7,7 +7,8 @@ import { incMetric, metricsHandler, metricsMiddleware } from './metrics.js'
 
 export { validateSecurityConfig, isProductionEnv } from './security-config.js'
 export { redisPing } from './redis-state.js'
-export { opaAllow, opaDenyReason, opaAuthorize, isOpaEnabled } from './opa-pep.js'
+export { isAdmin, checkTenantAccess, denyAuthz } from './authz.js'
+export { computeWebhookHmac, loadWebhookSecret, verifyWebhookRequest } from './webhook-verify.js'
 export { requireM2mAuth } from './m2m-auth.js'
 export { getM2mToken, s2sFetch } from './s2s-client.js'
 export { incMetric, metricsHandler, metricsMiddleware }
@@ -134,43 +135,16 @@ export function requireAuth(options = {}) {
         sub: payload.sub,
         tenantId: payload.tenant_id || payload.tenantId || null,
         scope: payload.scope || '',
+        roles: payload.realm_access?.roles || [],
       }
       next()
     })
   }
 }
 
-export async function fetchVaultSecret(path, field, options = {}) {
-  const { required = false } = options
-  const addr = process.env.VAULT_ADDR
-  const token = process.env.VAULT_TOKEN
-  if (!addr || !token) {
-    if (required) throw new Error('VAULT_ADDR and VAULT_TOKEN are required')
-    return null
-  }
-  try {
-    const res = await fetch(`${addr}/v1/${path}`, { headers: { 'X-Vault-Token': token } })
-    if (!res.ok) {
-      if (required) throw new Error(`Vault read failed for ${path}: HTTP ${res.status}`)
-      return null
-    }
-    const json = await res.json()
-    const value = json?.data?.data?.[field] ?? null
-    if (required && !value) throw new Error(`Vault field ${field} missing at ${path}`)
-    return value
-  } catch (e) {
-    if (required) throw e
-    return null
-  }
-}
-
-export function timingSafeEqualHex(a, b) {
-  try {
-    const ba = Buffer.from(a, 'hex')
-    const bb = Buffer.from(b, 'hex')
-    if (ba.length !== bb.length) return false
-    return crypto.timingSafeEqual(ba, bb)
-  } catch {
-    return false
-  }
-}
+export {
+  fetchVaultSecret,
+  vaultTransitEncrypt,
+  vaultTransitDecrypt,
+  timingSafeEqualHex,
+} from './vault-secrets.js'

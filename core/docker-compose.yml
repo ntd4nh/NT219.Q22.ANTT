@@ -5,8 +5,8 @@ services:
       dockerfile: nginx/Dockerfile
     container_name: edge-nginx
     ports:
-      - "8888:8080"
-      - "8444:8443"
+      - "80:8080"
+      - "443:8443"
     environment:
       BACKEND: http://kong:8000
       MODSEC_RULE_ENGINE: On
@@ -17,6 +17,7 @@ services:
       - ./certs/server.crt:/etc/nginx/conf/server.crt:ro
       - ./certs/server.key:/etc/nginx/conf/server.key:ro
       - ./nginx/modsecurity-custom.conf:/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/security-headers.conf:ro
     depends_on:
       - kong
     networks:
@@ -50,22 +51,6 @@ services:
       - dmz
       - private
 
-  opa:
-    image: openpolicyagent/opa:0.68.0
-    container_name: opa
-    command:
-      - run
-      - --server
-      - --addr=0.0.0.0:8181
-      - --log-level=info
-      - /policies
-    volumes:
-      - ./opa/policies:/policies:ro
-    ports:
-      - "8181:8181"
-    networks:
-      - private
-
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -75,6 +60,28 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - private
+
+  webhook-authorizer:
+    build:
+      context: ../services
+      dockerfile: webhook-authorizer/Dockerfile
+    container_name: webhook-authorizer
+    environment:
+      PORT: 8080
+      BILLING_INTERNAL_URL: http://billing-service:8080
+      WEBHOOK_INTERNAL_SECRET: ${WEBHOOK_INTERNAL_SECRET:-lab-webhook-internal-secret-change-me}
+      HMAC_SECRET: ${HMAC_SECRET:-lab-hmac-secret-change-me}
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
+      VAULT_REQUIRED: ${VAULT_REQUIRED:-false}
+      REDIS_URL: redis://redis:6379
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
+    depends_on:
+      - redis
+      - vault
+      - billing-service
     networks:
       - private
 
@@ -89,6 +96,7 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_JWT_AUD: ${KEYCLOAK_AUDIENCE:-shopflow-api}
     volumes:
       - ./kong/kong.yml:/etc/kong/kong.yml:ro
     ports:
@@ -99,6 +107,7 @@ services:
       - user-service
       - billing-service
       - auth-service
+      - webhook-authorizer
     networks:
       - dmz
       - private
@@ -143,7 +152,7 @@ services:
     environment:
       POSTGRES_DB: shopflow
       POSTGRES_USER: shopflow_app
-      POSTGRES_PASSWORD: shopflow_app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-shopflow_app}
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
       - app-db-data:/var/lib/postgresql/data
@@ -153,7 +162,7 @@ services:
       timeout: 5s
       retries: 10
     networks:
-      - private
+      - data
 
   vault:
     image: hashicorp/vault:1.18
@@ -185,13 +194,14 @@ services:
     container_name: order-service
     environment:
       PORT: 8080
-      DATABASE_URL: postgres://shopflow_app:shopflow_app@app-db:5432/shopflow
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
+      VAULT_DB_REQUIRED: ${VAULT_DB_REQUIRED:-false}
+      DB_PASSWORD: ${DB_PASSWORD:-shopflow_app}
       KEYCLOAK_ISSUERS: http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
       REDIS_URL: redis://redis:6379
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
@@ -206,7 +216,7 @@ services:
         condition: service_started
       redis:
         condition: service_healthy
-      opa:
+      vault:
         condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
@@ -215,6 +225,7 @@ services:
       retries: 5
     networks:
       - private
+      - data
 
   user-service:
     build:
@@ -227,8 +238,6 @@ services:
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       SSRF_ALLOWLIST: cdn.shopflow.local,imgur.com
       REDIS_URL: redis://redis:6379
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
@@ -236,7 +245,6 @@ services:
     depends_on:
       - keycloak
       - redis
-      - opa
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -258,8 +266,7 @@ services:
       VAULT_REQUIRED: ${VAULT_REQUIRED:-false}
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
       REDIS_URL: redis://redis:6379
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
+      WEBHOOK_INTERNAL_SECRET: ${WEBHOOK_INTERNAL_SECRET:-lab-webhook-internal-secret-change-me}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
@@ -267,7 +274,6 @@ services:
     depends_on:
       - vault
       - redis
-      - opa
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -288,14 +294,11 @@ services:
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
       KEYCLOAK_M2M_SCOPE: ${KEYCLOAK_M2M_SCOPE:-shopflow-api}
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
       REDIS_URL: redis://redis:6379
       SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     depends_on:
       - keycloak
       - redis
-      - opa
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -342,6 +345,18 @@ services:
     networks:
       - private
 
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - private
+
   grafana:
     image: grafana/grafana:11.2.0
     container_name: grafana
@@ -362,6 +377,7 @@ services:
 networks:
   dmz:
   private:
+  data:
 
 volumes:
   loki-data:

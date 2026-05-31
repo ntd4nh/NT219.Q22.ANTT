@@ -69,16 +69,20 @@ if ($ObsOnly) {
     exit 0
 }
 
+# Step 0 — remove single-host containers that reuse fixed container_name
+Write-Host "`n=== [0/8] Cleaning legacy containers ===" -ForegroundColor Magenta
+& "$root\deploy\cleanup-legacy-containers.ps1"
+
 # Step 1 — shared Docker networks
-Write-Host "`n=== [0/7] Creating shared networks ===" -ForegroundColor Magenta
+Write-Host "`n=== [1/8] Creating shared networks ===" -ForegroundColor Magenta
 & "$root\deploy\create-networks.ps1"
 
 # Step 2 — Data node (app-db must be healthy before app services)
 Start-Node "node-data" "shopflow-data" "Data (PostgreSQL)"
 Wait-Healthy "app-db" 90
 
-# Step 3 — Security node (redis, opa, vault)
-Start-Node "node-security" "shopflow-security" "Security (Vault + OPA + Redis)"
+# Step 3 — Security node (redis, vault)
+Start-Node "node-security" "shopflow-security" "Security (Vault + Redis)"
 Wait-Healthy "redis" 30
 
 # Step 4 — Identity node (keycloak — slowest start, ~60-90s JVM)

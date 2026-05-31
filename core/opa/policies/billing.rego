@@ -2,15 +2,24 @@ package shopflow.billing
 
 default allow = false
 
-allow {
+# S2S — read billing status
+allow if {
   input.action == "read"
   input.resource.type == "billing_status"
   input.subject.client_id != ""
 }
 
-allow {
-  input.action == "webhook_ingest"
-  input.subject.client_id != ""
+# Vault Transit demo endpoints are unauthenticated by design (D5)
+allow if {
+  input.action == "vault_transit"
+  input.resource.type == "transit_key"
 }
 
+# --- Deny reasons ---
+
 default deny_reason := "POLICY_DENY"
+
+deny_reason := "MISSING_CLIENT_ID" if {
+  not allow
+  input.subject.client_id == ""
+}

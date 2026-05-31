@@ -1,53 +1,29 @@
 # Trạng thái triển khai hạ tầng bảo mật
+**Cập nhật:** 2026-05-31 (runtime theo books)
 
 ## Đã triển khai
 
-- [x] Vault OSS (non-dev mode) + bootstrap `core/vault/init-dev.ps1`
-- [x] Loki + Promtail + Grafana
-- [x] ModSecurity edge + TLS + mTLS billing route
-- [x] Kong declarative (DB-less) + correlation-id + rate limit
-- [x] Keycloak realm `shopflow` import (`core/keycloak/shopflow-realm.json`)
-- [x] PostgreSQL app-db + seed 2 tenant
-- [x] order/user/billing/auth services (Node.js) thay echo-server
-- [x] D1 BOLA, D3 HMAC, D4 SSRF, D2 refresh replay trong service code
-- [x] JWT/JWKS validation tại service (multi-issuer localhost/keycloak)
-- [x] API contract: `docs/api-contract.md`
-- [x] CI: `.github/workflows/backend-ci.yml`
-- [x] Runbook: `docs/RUNBOOK.md`
+- [x] Vault OSS + `init-dev.ps1` — KV `secret/data/hmac`, `secret/data/db-credentials`, Transit `shopflow-master`
+- [x] Multi-node `deploy/node-*` (canonical) + `core/docker-compose.yml` (single-host)
+- [x] **Webhook Authorizer** (`services/webhook-authorizer`) — HMAC + replay tại edge; forward → `billing-service` internal
+- [x] Kong JWT: signature + `exp` + `iss` (key_claim_name) + **`aud`** (pre-function, `KONG_JWT_AUD`)
+- [x] AuthZ **server-side** (RBAC admin + ABAC tenant_id) — **không dùng OPA runtime**
+- [x] mTLS webhook `:8443`, internal mTLS `:9443`, WAF, Alertmanager
+- [x] D1–D5 security demos + `security/run-security-checks.ps1`
 
 ## File chính
 
-- `core/docker-compose.yml`
-- `services/*/server.js`, `services/shared/index.js`
-- `core/kong/kong.yml`
-- `core/db/init.sql`
-- `security/run-security-checks.ps1`, `security/fetch-lab-tokens.ps1`
+| File | Vai trò |
+|------|---------|
+| `deploy/deploy-all.ps1` | Multi-node bootstrap |
+| `services/webhook-authorizer/server.js` | Webhook HMAC authorizer |
+| `services/shared/authz.js` | Server-side BOLA/RBAC |
+| `services/shared/db-credentials.js` | DB URL từ Vault KV |
+| `core/kong/kong.yml` | Routes + JWT + aud pre-function |
 
-## Lưu ý vận hành
+## Vận hành bắt buộc
 
-1. `generate-certs.ps1` trước khi build edge.
-2. Sau Vault init: set `VAULT_ROOT_TOKEN` trong `core/.env`.
-3. Kong OSS: JWT verify tại microservice; gateway enforce correlation + rate limit.
-
-## Checklist chốt
-
-- [`07-final-backend-checklist.md`](07-final-backend-checklist.md)
-- Verify: `scripts/verify-final-backend.ps1`
-- Evidence: `docs/evidence/`
-
-## Bonus hardening (2026-05-24)
-
-- [x] Vault runtime token least-privilege (`VAULT_APP_TOKEN`, policy `app-readonly`)
-- [x] Webhook chỉ qua mTLS ingress; edge chặn cleartext webhook
-- [x] Kong rate limit per-service + tenant quota app-layer
-- [x] Security audit logs + metrics (`TOKEN_REPLAY`, auth fail reasons)
-- [x] Alert rules mở rộng (BOLA/webhook/SSRF/replay/rate-limit)
-- [x] Security checks layered 18/18 (`security/run-security-checks.ps1`)
-
-## Hạn chế còn lại (production tiếp theo)
-
-- JWT tại Kong OSS hạn chế (verify tại service).
-- D2 refresh replay store in-memory (auth-service) — cần Redis/DB cho multi-instance.
-- Kong rate limit `policy: local` — cần Redis cho multi-node.
-- mTLS full service mesh (Kong -> all services) chưa triển khai.
-- Multi-node HA: triển khai thực tế qua `core/docker-stack.yml`.
+1. `core/certs/generate-certs.ps1`
+2. `core/vault/init-dev.ps1` → `VAULT_APP_TOKEN` + `DB_PASSWORD` khớp Vault `db-credentials`
+3. `core/keycloak/sync-kong-jwt-key.ps1` → restart Kong
+4. `deploy/deploy-all.ps1` (hoặc `core/docker-compose up`)

@@ -9,9 +9,6 @@ import {
   validateSecurityConfig,
   redisPing,
   requireM2mAuth,
-  opaAllow,
-  opaDenyReason,
-  isOpaEnabled,
 } from '../shared/index.js'
 import { isMarked, markUsed, refreshTokenKey } from '../shared/redis-state.js'
 
@@ -45,20 +42,7 @@ app.get('/health', async (_req, res) => {
 
 const m2mAuth = requireM2mAuth({ log })
 
-app.get('/api/internal/auth/status', m2mAuth, async (req, res) => {
-  const opaInput = {
-    action: 'read',
-    subject: { client_id: req.m2m.clientId, sub: req.m2m.sub },
-    resource: { type: 'auth_status' },
-  }
-  if (isOpaEnabled()) {
-    const { allow } = await opaAllow('shopflow.auth', opaInput)
-    if (!allow) {
-      const reason = await opaDenyReason('shopflow.auth', opaInput)
-      incMetric('shopflow_opa_denied_total', { reason_code: reason })
-      return res.status(403).json({ error: 'FORBIDDEN', reason_code: reason })
-    }
-  }
+app.get('/api/internal/auth/status', m2mAuth, async (_req, res) => {
   const redis = await redisPing()
   res.json({ service: 'auth-service', redis })
 })
@@ -86,7 +70,7 @@ app.post('/api/auth/s2s-token', async (req, res) => {
     log('m2m_token_issued', { correlationId: req.correlationId, clientId: M2M_CLIENT_ID })
     res.json(data)
   } catch (e) {
-    res.status(502).json({ error: 'BAD_GATEWAY', message: e.message })
+    res.status(503).json({ error: 'SERVICE_UNAVAILABLE', message: e.message })
   }
 })
 
@@ -96,20 +80,17 @@ app.post('/api/auth/refresh', async (req, res) => {
     securityAudit(log, 'AUTH_FAILED', { correlationId: req.correlationId, reason: 'MISSING_REFRESH_TOKEN' })
     return res.status(401).json({ error: 'UNAUTHORIZED', message: 'refresh_token required' })
   }
-
   if (await isMarked(refreshTokenKey(refreshToken))) {
     incMetric('shopflow_token_replay_total')
     incMetric('shopflow_auth_failures_total')
     securityAudit(log, 'TOKEN_REPLAY', { correlationId: req.correlationId, reason: 'REFRESH_REPLAY' })
     return res.status(401).json({ error: 'TOKEN_REPLAY', message: 'Refresh token already used' })
   }
-
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
     client_id: CLIENT_ID,
     refresh_token: refreshToken,
   })
-
   try {
     const kcRes = await fetch(KEYCLOAK_TOKEN_URL, {
       method: 'POST',

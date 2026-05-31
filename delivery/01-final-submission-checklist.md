@@ -1,25 +1,41 @@
-# Final submission checklist (Ngày 13)
+# Final submission checklist (NT219)
 
 ## Code và demo
+
+- [x] Multi-node deploy `deploy/` — 7 Compose project tách biệt theo trust zone.
 - [x] `core/docker-compose.yml` có Vault, Loki, ModSecurity edge, TLS/mTLS proxy.
-- [x] Có hướng dẫn run trong `core/README.md`.
-- [x] Có bộ test D1-D4 + infra (`security/test-cases-d1-d4.md`, `run-security-checks.ps1`).
-- [x] Có kết quả baseline/hardened (`metrics/g3-baseline-vs-hardened.csv`).
+- [x] `core/docker-stack.yml` — Docker Swarm HA skeleton.
+- [x] Hướng dẫn run trong `README.md` (root) và `core/README.md`.
+- [x] Bộ test D1-D5 (`security/test-cases-d1-d4.md`, `run-security-checks.ps1`).
+- [x] Kết quả baseline/hardened (`docs/evidence/g3-benchmark-*.csv`, `mttd-mttr-drill-*.csv`).
+- [x] Vault Transit demo: `/api/billing/vault-encrypt`, `/api/billing/vault-decrypt`.
+- [x] Script sync Kong JWT key: `core/keycloak/sync-kong-jwt-key.ps1`.
 
 ## Báo cáo viết
-- [ ] Scenario + related entities + security requirements.
-- [ ] Literature survey cập nhật (có ít nhất 1 bài báo mới).
-- [ ] Mapping G1/G2/G3 rõ ràng.
-- [ ] Có phần kết quả demo và phân tích.
+
+- [x] Scenario + related entities + security requirements — `docs/books/Kien-truc-he-thong-NT219.md`.
+- [ ] Literature survey cập nhật (≥1 bài báo mới với DOI/venue).
+- [x] Mapping G1/G2/G3 — `docs/books/Kien-truc-he-thong-NT219.md` mục 8 + `implementation/09-gap-checklist-pass-fail.md`.
+- [x] Kết quả demo và phân tích — `docs/evidence/` + `metrics/g3-report.md`.
 
 ## Slide trình bày
-- [ ] Problem statement + architecture.
-- [ ] D1-D4 attack/defense flow.
-- [ ] Bảng so sánh baseline vs hardened.
-- [ ] Lesson learned + future work.
+
+- [x] Problem statement + architecture — `delivery/03-slide-outline.md` Slide 1-4.
+- [x] D1-D5 attack/defense flow — Slide 5-9.
+- [x] Bảng so sánh baseline vs hardened — Slide 10.
+- [x] Lesson learned + future work — Slide 11.
 
 ## Hồ sơ nộp
-- [ ] Source code + config.
-- [ ] Script/test evidence (log, screenshot).
-- [ ] PDF slide + báo cáo.
-- [ ] File checklist đã tick đầy đủ.
+
+- [x] Source code + config (repo).
+- [x] Script/test evidence (`docs/evidence/`: log, screenshot, CSV benchmark).
+- [ ] PDF slide (export từ outline `delivery/03-slide-outline.md`).
+- [ ] Báo cáo PDF.
+- [ ] File checklist này đã tick đầy đủ.
+
+---
+
+> **Còn lại cần làm trước nộp:**
+> 1. Bổ sung ≥1 bài báo mới vào `docs/books/Kien-truc-he-thong-NT219.md` mục 9.
+> 2. Export slide PDF.
+> 3. Hoàn thiện báo cáo viết (PDF).

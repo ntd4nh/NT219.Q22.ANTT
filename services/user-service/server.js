@@ -11,9 +11,6 @@ import {
   validateSecurityConfig,
   redisPing,
   requireM2mAuth,
-  opaAllow,
-  opaDenyReason,
-  isOpaEnabled,
 } from '../shared/index.js'
 
 validateSecurityConfig('user-service')
@@ -79,19 +76,7 @@ app.get('/api/users', auth, (req, res) => {
 app.post('/api/users/fetch-url', requireAuth({ optional: true, log }), async (req, res) => {
   const url = req.body?.url
   if (!url) return res.status(400).json({ error: 'BAD_REQUEST', message: 'url required' })
-
   const check = await validateUrl(url)
-  if (isOpaEnabled() && check.ok) {
-    const { allow } = await opaAllow('shopflow.users', {
-      action: 'fetch_url',
-      subject: { sub: req.user?.sub, tenant_id: req.user?.tenantId },
-      resource: { type: 'external_url', allowlisted: true, host: check.host },
-    })
-    if (!allow) {
-      incMetric('shopflow_opa_denied_total', { reason_code: 'URL_POLICY_DENY' })
-      return res.status(403).json({ error: 'FORBIDDEN', message: 'OPA denied URL fetch' })
-    }
-  }
   if (!check.ok) {
     incMetric('shopflow_ssrf_blocked_total')
     securityAudit(log, 'SSRF_BLOCKED', {
@@ -101,25 +86,15 @@ app.post('/api/users/fetch-url', requireAuth({ optional: true, log }), async (re
     })
     return res.status(403).json({ error: 'SSRF_BLOCKED', reason: check.reason })
   }
-
-  res.json({ ok: true, message: 'URL allowed (lab: no outbound fetch)', host: check.host })
+  res.json({
+    ok: true,
+    message: 'URL validation passed: allowlist + DNS + private-IP checks cleared',
+    host: check.host,
+  })
 })
 
 app.get('/api/internal/users/:tenantId', m2mAuth, async (req, res) => {
   const { tenantId } = req.params
-  const opaInput = {
-    action: 'read',
-    subject: { client_id: req.m2m.clientId, sub: req.m2m.sub },
-    resource: { type: 'user_profile', tenant_id: tenantId },
-  }
-  if (isOpaEnabled()) {
-    const { allow } = await opaAllow('shopflow.users', opaInput)
-    if (!allow) {
-      const reason = await opaDenyReason('shopflow.users', opaInput)
-      incMetric('shopflow_opa_denied_total', { reason_code: reason })
-      return res.status(403).json({ error: 'FORBIDDEN', reason_code: reason })
-    }
-  }
   res.json({ tenant_id: tenantId, profile: { display_name: `Tenant ${tenantId}` } })
 })
 

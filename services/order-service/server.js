@@ -11,12 +11,12 @@ import {
   securityAudit,
   validateSecurityConfig,
   redisPing,
-  opaAllow,
-  opaDenyReason,
-  isOpaEnabled,
   requireM2mAuth,
   s2sFetch,
+  isAdmin,
+  checkTenantAccess,
 } from '../shared/index.js'
+import { resolveDatabaseUrl } from '../shared/db-credentials.js'
 
 validateSecurityConfig('order-service')
 
@@ -24,13 +24,11 @@ const app = express()
 const log = createLogger('order-service')
 const port = Number(process.env.PORT || 8080)
 
+let pool = null
+
 app.use(express.json())
 app.use(correlationMiddleware())
 app.use(metricsMiddleware('order-service'))
-
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://shopflow_app:shopflow_app@app-db:5432/shopflow',
-})
 
 const auth = requireAuth({ log })
 const m2mAuth = requireM2mAuth({ log })
@@ -39,7 +37,7 @@ const USER_INTERNAL_BASE = process.env.USER_INTERNAL_URL || 'http://user-service
 
 async function ensureTenant(req, res) {
   const tenantId = req.user?.tenantId
-  if (!tenantId) {
+  if (!tenantId && !isAdmin(req.user?.roles)) {
     securityAudit(log, 'AUTHZ_DENIED', {
       correlationId: req.correlationId,
       reason: 'MISSING_TENANT_CLAIM',
@@ -65,32 +63,12 @@ app.get('/health', async (_req, res) => {
 
 app.get('/api/orders', auth, rateLimit, async (req, res) => {
   const tenantId = req.user.tenantId
-  if (!tenantId) {
-    securityAudit(log, 'AUTHZ_DENIED', {
-      correlationId: req.correlationId,
-      reason: 'MISSING_TENANT_CLAIM',
-      path: req.path,
-    })
+  if (!tenantId && !isAdmin(req.user.roles)) {
     return res.status(403).json({ error: 'FORBIDDEN', message: 'Missing tenant_id claim' })
   }
-  if (isOpaEnabled()) {
-    const { allow } = await opaAllow('shopflow.orders', {
-      action: 'list',
-      subject: { tenant_id: tenantId, sub: req.user.sub },
-      resource: { type: 'order_collection' },
-    })
-    if (!allow) {
-      const reason = await opaDenyReason('shopflow.orders', {
-        action: 'list',
-        subject: { tenant_id: tenantId, sub: req.user.sub },
-        resource: { type: 'order_collection' },
-      })
-      incMetric('shopflow_opa_denied_total', { reason_code: reason })
-      securityAudit(log, 'OPA_DENIED', { correlationId: req.correlationId, reason, path: req.path })
-      return res.status(403).json({ error: 'FORBIDDEN', message: 'OPA policy denied', reason_code: reason })
-    }
-  }
-  const { rows } = await pool.query('SELECT id, tenant_id, amount, status FROM orders WHERE tenant_id = $1', [tenantId])
+  const { rows } = isAdmin(req.user.roles)
+    ? await pool.query('SELECT id, tenant_id, amount, status FROM orders')
+    : await pool.query('SELECT id, tenant_id, amount, status FROM orders WHERE tenant_id = $1', [tenantId])
   log('orders_list', { correlationId: req.correlationId, tenantId, count: rows.length })
   res.json({ orders: rows })
 })
@@ -99,41 +77,19 @@ app.get('/api/orders/:orderId', auth, rateLimit, async (req, res) => {
   const tenantId = req.user.tenantId
   const { orderId } = req.params
   const { rows } = await pool.query('SELECT id, tenant_id, amount, status FROM orders WHERE id = $1', [orderId])
-  if (!rows.length) {
-    return res.status(404).json({ error: 'NOT_FOUND' })
-  }
+  if (!rows.length) return res.status(404).json({ error: 'NOT_FOUND' })
   const order = rows[0]
-  const opaInput = {
-    action: 'read',
-    subject: { tenant_id: tenantId, sub: req.user.sub },
-    resource: { type: 'order', tenant_id: order.tenant_id, id: orderId },
-  }
-  if (isOpaEnabled()) {
-    const { allow } = await opaAllow('shopflow.orders', opaInput)
-    if (!allow) {
-      const reason = await opaDenyReason('shopflow.orders', opaInput)
-      incMetric('shopflow_bola_blocked_total')
-      incMetric('shopflow_opa_denied_total', { reason_code: reason })
-      securityAudit(log, 'BOLA_BLOCKED', {
-        correlationId: req.correlationId,
-        tenantId,
-        orderTenant: order.tenant_id,
-        orderId,
-        reason,
-        opa: true,
-      })
-      return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant access denied', reason_code: reason })
-    }
-  } else if (order.tenant_id !== tenantId) {
+  const access = checkTenantAccess(tenantId, order.tenant_id, req.user.roles)
+  if (!access.allow) {
     incMetric('shopflow_bola_blocked_total')
     securityAudit(log, 'BOLA_BLOCKED', {
       correlationId: req.correlationId,
       tenantId,
       orderTenant: order.tenant_id,
       orderId,
-      reason: 'CROSS_TENANT',
+      reason: access.reason,
     })
-    return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant access denied' })
+    return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant access denied', reason_code: access.reason })
   }
   res.json(order)
 })
@@ -141,12 +97,9 @@ app.get('/api/orders/:orderId', auth, rateLimit, async (req, res) => {
 app.get('/api/catalog/lots', auth, rateLimit, async (req, res) => {
   const tenantId = await ensureTenant(req, res)
   if (!tenantId) return
-
   const { rows } = await pool.query(
     `SELECT id, tenant_id, sku, name, species, quality_grade, available_kg, unit_price_vnd
-     FROM catalog_lots
-     WHERE tenant_id = $1
-     ORDER BY created_at DESC`,
+     FROM catalog_lots WHERE tenant_id = $1 ORDER BY created_at DESC`,
     [tenantId],
   )
   res.json({ lots: rows })
@@ -155,12 +108,9 @@ app.get('/api/catalog/lots', auth, rateLimit, async (req, res) => {
 app.get('/api/vendors/me', auth, rateLimit, async (req, res) => {
   const tenantId = await ensureTenant(req, res)
   if (!tenantId) return
-
   const { rows } = await pool.query(
     `SELECT tenant_id, company_name, province, contact_name, role
-     FROM vendor_profiles
-     WHERE tenant_id = $1
-     LIMIT 1`,
+     FROM vendor_profiles WHERE tenant_id = $1 LIMIT 1`,
     [tenantId],
   )
   if (!rows.length) return res.status(404).json({ error: 'NOT_FOUND', message: 'Vendor profile not found' })
@@ -170,12 +120,9 @@ app.get('/api/vendors/me', auth, rateLimit, async (req, res) => {
 app.get('/api/shipments', auth, rateLimit, async (req, res) => {
   const tenantId = await ensureTenant(req, res)
   if (!tenantId) return
-
   const { rows } = await pool.query(
     `SELECT id, tenant_id, lot_id, shipment_status, eta_date, route_summary
-     FROM shipments
-     WHERE tenant_id = $1
-     ORDER BY eta_date ASC`,
+     FROM shipments WHERE tenant_id = $1 ORDER BY eta_date ASC`,
     [tenantId],
   )
   res.json({ shipments: rows })
@@ -184,20 +131,26 @@ app.get('/api/shipments', auth, rateLimit, async (req, res) => {
 app.post('/api/quotes', auth, rateLimit, async (req, res) => {
   const tenantId = await ensureTenant(req, res)
   if (!tenantId) return
-
   const { lot_id: lotId, quantity_kg: quantityKg } = req.body || {}
-  if (!lotId || !quantityKg) return res.status(400).json({ error: 'BAD_REQUEST', message: 'lot_id and quantity_kg are required' })
-
+  if (!lotId || !quantityKg) {
+    return res.status(400).json({ error: 'BAD_REQUEST', message: 'lot_id and quantity_kg are required' })
+  }
   const lotResult = await pool.query(
     'SELECT id, tenant_id, unit_price_vnd FROM catalog_lots WHERE id = $1 LIMIT 1',
     [lotId],
   )
   if (!lotResult.rows.length) return res.status(404).json({ error: 'NOT_FOUND', message: 'Lot not found' })
   const lot = lotResult.rows[0]
-  if (lot.tenant_id !== tenantId) {
+  const access = checkTenantAccess(tenantId, lot.tenant_id, req.user.roles)
+  if (!access.allow) {
+    incMetric('shopflow_bola_blocked_total')
+    securityAudit(log, 'BOLA_BLOCKED', {
+      correlationId: req.correlationId,
+      reason: 'CROSS_TENANT_QUOTE',
+      path: req.path,
+    })
     return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant quote denied' })
   }
-
   const totalVnd = Number(quantityKg) * Number(lot.unit_price_vnd)
   const quoteId = `q-${Date.now()}`
   await pool.query(
@@ -205,28 +158,19 @@ app.post('/api/quotes', auth, rateLimit, async (req, res) => {
      VALUES ($1, $2, $3, $4, $5, 'draft')`,
     [quoteId, tenantId, lotId, Number(quantityKg), totalVnd],
   )
-  res.status(201).json({ id: quoteId, tenant_id: tenantId, lot_id: lotId, quantity_kg: Number(quantityKg), total_vnd: totalVnd, quote_status: 'draft' })
+  res.status(201).json({
+    id: quoteId,
+    tenant_id: tenantId,
+    lot_id: lotId,
+    quantity_kg: Number(quantityKg),
+    total_vnd: totalVnd,
+    quote_status: 'draft',
+  })
 })
 
 app.get('/api/internal/orders/tenant-summary/:tenantId', m2mAuth, async (req, res) => {
   const { tenantId } = req.params
-  const opaInput = {
-    action: 'read',
-    subject: { client_id: req.m2m.clientId, sub: req.m2m.sub },
-    resource: { type: 'order_summary', tenant_id: tenantId },
-  }
-  if (isOpaEnabled()) {
-    const { allow } = await opaAllow('shopflow.orders', opaInput)
-    if (!allow) {
-      const reason = await opaDenyReason('shopflow.orders', opaInput)
-      incMetric('shopflow_opa_denied_total', { reason_code: reason })
-      return res.status(403).json({ error: 'FORBIDDEN', reason_code: reason })
-    }
-  }
-  const { rows } = await pool.query(
-    'SELECT COUNT(*)::int AS c FROM orders WHERE tenant_id = $1',
-    [tenantId],
-  )
+  const { rows } = await pool.query('SELECT COUNT(*)::int AS c FROM orders WHERE tenant_id = $1', [tenantId])
   let profile = null
   try {
     const profileRes = await s2sFetch(
@@ -240,21 +184,22 @@ app.get('/api/internal/orders/tenant-summary/:tenantId', m2mAuth, async (req, re
   res.json({ tenant_id: tenantId, order_count: rows[0].c, profile })
 })
 
-async function seedIfEmpty() {
-  const { rows } = await pool.query('SELECT COUNT(*)::int AS c FROM orders')
-  if (rows[0].c > 0) return
-  log('seed_skip', { reason: 'init.sql expected' })
-}
-
-app.listen(port, async () => {
+async function start() {
+  const connectionString = await resolveDatabaseUrl()
+  pool = new pg.Pool({ connectionString })
   for (let i = 0; i < 30; i++) {
     try {
       await pool.query('SELECT 1')
-      await seedIfEmpty()
-      log('startup', { port })
-      break
+      app.listen(port, () => log('startup', { port }))
+      return
     } catch {
       await new Promise((r) => setTimeout(r, 2000))
     }
   }
+  throw new Error('Database not ready')
+}
+
+start().catch((e) => {
+  console.error(JSON.stringify({ event: 'startup_failed', service: 'order-service', error: e.message }))
+  process.exit(1)
 })

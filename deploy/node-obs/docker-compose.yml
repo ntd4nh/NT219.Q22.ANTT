@@ -1,5 +1,5 @@
 # Node: obs  — trust zone: Operations Zone
-# Services: Prometheus, Loki, Promtail, Grafana
+# Services: Prometheus, Alertmanager, Loki, Promtail, Grafana
 # Startup order: any (scrapes existing services; no other node depends on it)
 # Usage: docker compose -p shopflow-obs --env-file ../../core/.env up -d
 
@@ -39,6 +39,18 @@ services:
       - ../../core/observability/recording_rules.yml:/etc/prometheus/recording_rules.yml:ro
     ports:
       - "9090:9090"
+    networks:
+      - shopflow_private
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ../../core/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
     networks:
       - shopflow_private
 

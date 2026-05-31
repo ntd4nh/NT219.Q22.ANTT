@@ -1,7 +1,5 @@
 # Node: data  — trust zone: Data Zone
-# Services: PostgreSQL application database
-# Startup order: 1st — app services depend on app-db being healthy
-# Usage: docker compose -p shopflow-data --env-file ../../core/.env up -d
+# DB password must match Vault secret/data/db-credentials (see core/vault/init-dev.ps1)
 
 services:
   app-db:
@@ -10,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: shopflow
       POSTGRES_USER: shopflow_app
-      POSTGRES_PASSWORD: shopflow_app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in core/.env — must match Vault db-credentials}
     volumes:
       - ../../core/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
       - app-db-data:/var/lib/postgresql/data

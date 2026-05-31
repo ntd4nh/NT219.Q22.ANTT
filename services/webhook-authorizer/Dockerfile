@@ -4,10 +4,10 @@ WORKDIR /app
 COPY shared /app/shared
 WORKDIR /app/shared
 RUN npm install --omit=dev
-COPY auth-service/package.json /app/auth-service/
-WORKDIR /app/auth-service
+COPY webhook-authorizer/package.json /app/webhook-authorizer/
+WORKDIR /app/webhook-authorizer
 RUN npm install --omit=dev
-COPY auth-service/server.js /app/auth-service/
+COPY webhook-authorizer/server.js /app/webhook-authorizer/
 RUN chown -R appuser:appuser /app
 USER appuser
 ENV PORT=8080

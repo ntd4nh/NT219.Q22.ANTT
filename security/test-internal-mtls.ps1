@@ -6,8 +6,9 @@ $certDir = (Resolve-Path (Join-Path $PSScriptRoot '..\core\certs')).Path
 $uri = 'https://host.docker.internal:9443/api/internal/orders/tenant-summary/tenant-a'
 
 function Invoke-MtlsCurlDocker($includeClientCert) {
-  $args = @(
-    'run', '--rm', '--network', 'core_dmz',
+$dockerNetwork = if ($env:SHOPFLOW_TEST_DOCKER_NETWORK) { $env:SHOPFLOW_TEST_DOCKER_NETWORK } else { 'shopflow_dmz' }
+$args = @(
+    'run', '--rm', '--network', $dockerNetwork,
     '-v', "${certDir}:/certs:ro",
     'curlimages/curl:8.10.1',
     'curl', '-sk', '-w', '%{http_code}', '-o', '/tmp/resp.json'

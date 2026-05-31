@@ -1,7 +1,5 @@
 # Node: app-a  — trust zone: App Private Subnet
 # Services: user-service, order-service
-# Startup order: 4th — after node-data (app-db), node-security (redis/opa), node-identity (keycloak)
-# Usage: docker compose -p shopflow-app-a --env-file ../../core/.env up -d
 
 services:
   user-service:
@@ -15,8 +13,6 @@ services:
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       SSRF_ALLOWLIST: cdn.shopflow.local,imgur.com
       REDIS_URL: redis://redis:6379
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
@@ -36,13 +32,14 @@ services:
     container_name: order-service
     environment:
       PORT: 8080
-      DATABASE_URL: postgres://shopflow_app:shopflow_app@app-db:5432/shopflow
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
+      VAULT_DB_REQUIRED: ${VAULT_DB_REQUIRED:-false}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in core/.env}
       KEYCLOAK_ISSUERS: http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
       REDIS_URL: redis://redis:6379
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}

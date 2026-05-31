@@ -1,4 +1,24 @@
-_format_version: "3.0"
+﻿_format_version: "3.0"
+
+# Kong JWT: RS256 via sync-kong-jwt-key.ps1 â€” verify signature + exp + iss (key_claim_name).
+# Audience (aud) enforced via pre-function below (KONG_JWT_AUD, default shopflow-api).
+# Service layer still validates iss/aud as defense-in-depth.
+
+consumers:
+  - username: keycloak-realm-users
+    jwt_secrets:
+      - key: http://keycloak:8080/realms/shopflow
+        algorithm: RS256
+        rsa_public_key: |-
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn9s2dL93VYZLSImALgZc
+          5m7v23favKgaILJ42D7J6kgeFWAQ1Uxhb5szpbpsKkdZB6Jzx7TU0mbW3oC7d2Th
+          mYKjKGR2LEft9nXmQSv7om7Wza5QftByQhUlwtamBkpaUXUXXMQJjrSJj/yqKN+9
+          lMDViJ0Nbu4Nk95uhwRPOeN7XG/gfECoNjp+eYwE5G9dL7IUSRLjcHFDVzacArcd
+          qlZJjYPjgVAh/vPmCvq6tx5+nk0hEM03H8shod8TdjydgTRtwveWPyJaZ2crsqzA
+          KKyWd+NXq5FRmNm9meslxHh+vP/n4e9sDl72ceZtioW9iGyHHFolDWJWLve5fOlb
+          8wIDAQAB
+          -----END PUBLIC KEY-----
 
 services:
   - name: order-service
@@ -8,6 +28,38 @@ services:
         paths: ["/api/orders", "/api/internal/orders"]
         strip_path: false
     plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify:
+            - exp
+      - name: pre-function
+        config:
+          access:
+            - |
+              local expected = "shopflow-api"
+              local authz = kong.request.get_header("Authorization")
+              if not authz then return end
+              local token = authz:match("Bearer%s+(.+)")
+              if not token then return kong.response.exit(401, { message = "Invalid bearer" }) end
+              local payload_b64 = token:match("[^%.]+%.([^%.]+)")
+              if not payload_b64 then return kong.response.exit(401, { message = "Invalid token" }) end
+              local rem = #payload_b64 % 4
+              if rem > 0 then payload_b64 = payload_b64 .. string.rep("=", 4 - rem) end
+              payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+              local json = ngx.decode_base64(payload_b64)
+              if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
+              local cjson = require("cjson.safe")
+              local payload = cjson.decode(json)
+              if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
+              local aud = payload.aud or payload.azp
+              if type(aud) == "table" then
+                local ok = false
+                for _, v in ipairs(aud) do if v == expected then ok = true break end end
+                if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
+              elseif aud ~= expected then
+                return kong.response.exit(401, { message = "Invalid audience" })
+              end
       - name: correlation-id
         config:
           header_name: X-Correlation-Id
@@ -27,6 +79,38 @@ services:
         paths: ["/api/users", "/api/internal/users"]
         strip_path: false
     plugins:
+      - name: jwt
+        config:
+          key_claim_name: iss
+          claims_to_verify:
+            - exp
+      - name: pre-function
+        config:
+          access:
+            - |
+              local expected = "shopflow-api"
+              local authz = kong.request.get_header("Authorization")
+              if not authz then return end
+              local token = authz:match("Bearer%s+(.+)")
+              if not token then return kong.response.exit(401, { message = "Invalid bearer" }) end
+              local payload_b64 = token:match("[^%.]+%.([^%.]+)")
+              if not payload_b64 then return kong.response.exit(401, { message = "Invalid token" }) end
+              local rem = #payload_b64 % 4
+              if rem > 0 then payload_b64 = payload_b64 .. string.rep("=", 4 - rem) end
+              payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+              local json = ngx.decode_base64(payload_b64)
+              if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
+              local cjson = require("cjson.safe")
+              local payload = cjson.decode(json)
+              if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
+              local aud = payload.aud or payload.azp
+              if type(aud) == "table" then
+                local ok = false
+                for _, v in ipairs(aud) do if v == expected then ok = true break end end
+                if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
+              elseif aud ~= expected then
+                return kong.response.exit(401, { message = "Invalid audience" })
+              end
       - name: correlation-id
         config:
           header_name: X-Correlation-Id
@@ -39,11 +123,66 @@ services:
           redis_host: redis
           redis_port: 6379
 
+  - name: webhook-authorizer
+    url: http://webhook-authorizer:8080
+    routes:
+      - name: billing-webhook-route
+        paths: ["/api/billing/webhook"]
+        strip_path: false
+    plugins:
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-Id
+          generator: uuid
+          echo_downstream: true
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+
   - name: billing-service
     url: http://billing-service:8080
     routes:
       - name: billing-route
         paths: ["/api/billing", "/api/internal/billing"]
+        strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+          - name: pre-function
+            config:
+              access:
+                - |
+                  local expected = "shopflow-api"
+                  local authz = kong.request.get_header("Authorization")
+                  if not authz then return end
+                  local token = authz:match("Bearer%s+(.+)")
+                  if not token then return kong.response.exit(401, { message = "Invalid bearer" }) end
+                  local payload_b64 = token:match("[^%.]+%.([^%.]+)")
+                  if not payload_b64 then return kong.response.exit(401, { message = "Invalid token" }) end
+                  local rem = #payload_b64 % 4
+                  if rem > 0 then payload_b64 = payload_b64 .. string.rep("=", 4 - rem) end
+                  payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+                  local json = ngx.decode_base64(payload_b64)
+                  if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
+                  local cjson = require("cjson.safe")
+                  local payload = cjson.decode(json)
+                  if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
+                  local aud = payload.aud or payload.azp
+                  if type(aud) == "table" then
+                    local ok = false
+                    for _, v in ipairs(aud) do if v == expected then ok = true break end end
+                    if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
+                  elseif aud ~= expected then
+                    return kong.response.exit(401, { message = "Invalid audience" })
+                  end
+      - name: billing-vault-demo-route
+        paths: ["/api/billing/vault-encrypt", "/api/billing/vault-decrypt", "/api/billing/test-sign"]
         strip_path: false
     plugins:
       - name: correlation-id

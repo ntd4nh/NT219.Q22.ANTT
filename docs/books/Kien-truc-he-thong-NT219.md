@@ -15,7 +15,7 @@
 | High | JWT lifecycle rõ TTL, refresh rotation, revocation strategy | Đạt | Thêm mục vòng đời token |
 | High | Webhook HMAC + anti-replay có nơi verify khả thi | Đạt | Verify tại custom authorizer/Billing ingress |
 | High | Mapping NT219 đúng mục (Goals/Demo/References) | Đạt | Sửa mục 8.1 |
-| Medium | Đồng bộ authZ giữa các tài liệu (không chồng PDP/OPA) | Đạt | Chốt server-side authZ tại service |
+| Medium | Đồng bộ authZ giữa các tài liệu (không chồng PDP/OPA) | Đạt | AuthZ server-side tại service; OPA runtime không dùng |
 | Medium | OWASP API Top 10 mapping đầy đủ | Đạt | Bổ sung bảng đầy đủ 10 hạng mục |
 | Medium | Có protocol kiểm chứng G3 đo được | Đạt | Thêm protocol D1-D4 |
 | Low | Diễn đạt, thuật ngữ, tham chiếu nội bộ | Đạt | Rà cuối tài liệu |
@@ -323,9 +323,9 @@ flowchart TB
   GW --> IdP
   GW --> US
   GW --> OS
-  GW --> BS
   GW --> WHA
   WHA --> BS
+  GW --> BS
   US --> DB
   OS --> DB
   BS --> DB
@@ -389,34 +389,42 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant PSP as Payment_Provider
-  participant GW as API_Gateway
+  participant WAF as Nginx_ModSecurity
+  participant GW as Kong_Gateway
   participant Auth as Webhook_Authorizer
   participant B as Billing_Service
 
   PSP->>PSP: body_timestamp_nonce
   PSP->>PSP: HMAC_SHA256_secret
-  PSP->>GW: POST_webhook_Signature_header
-  GW->>Auth: Invoke_custom_authorizer
-  Auth->>Auth: Check_timestamp_nonce_window
-  Auth->>Auth: Recompute_HMAC_constant_time
-  Auth->>B: Forward_if_valid
-  B->>B: Idempotent_process
+  PSP->>WAF: POST_webhook_HTTPS_Signature_header
+  WAF->>GW: Forward_after_WAF_inspection
+  GW->>Auth: Route_webhook
+  Auth->>Auth: Verify_HMAC_replay_window
+  Auth->>B: Forward_internal_token
+  B->>B: Idempotent_process_event
 ```
 
-**Điểm mật mã:** HMAC-SHA256 (shared secret); chống replay bằng `timestamp` + `nonce` cache (Redis TTL); so sánh chữ ký constant-time.
+**Điểm mật mã:** HMAC-SHA256 (Vault KV `secret/data/hmac`); replay `timestamp` + `nonce` Redis; constant-time compare. mTLS qua `billing-mtls-proxy:8443`.
 
-### 5.6. Luồng 4 — Mã hóa dữ liệu at-rest (Envelope encryption)
+> **Runtime:** `services/webhook-authorizer` (edge node) → `POST /api/internal/billing/webhook` trên billing-service (shared `WEBHOOK_INTERNAL_SECRET`).
+
+### 5.6. Luồng 4 — Mã hóa dữ liệu at-rest (Vault Transit Encryption-as-a-Service)
 
 ```mermaid
 flowchart LR
-  Svc[Order_Service] -->|Generate_DEK| App[App_logic]
-  App -->|Encrypt_data_AES_GCM| Cipher[Ciphertext]
-  App -->|Encrypt_DEK| Vault[Vault_Transit_Key]
-  Vault -->|Store_wrapped_DEK| DB[(PostgreSQL)]
-  Cipher --> DB
+  Svc[Billing_Service] -->|plaintext_base64| Vault[Vault_Transit_API]
+  Vault -->|AES256_GCM96_encrypt_internal_DEK| Vault
+  Vault -->|vault_v1_ciphertext| Svc
+  Svc -->|store_ciphertext| DB[(PostgreSQL)]
+  Svc2[Read_path] -->|ciphertext| Vault
+  Vault -->|plaintext| Svc2
 ```
 
-**Điểm mật mã:** AES-256-GCM cho dữ liệu; master key trong Vault Transit; DEK per-record hoặc per-tenant.
+**Điểm mật mã:** Vault Transit engine dùng key `shopflow-master` (AES-256-GCM / aes256-gcm96); master key lưu trong Vault, không bao giờ expose cho ứng dụng; ciphertext có format `vault:v1:...`. Đây là pattern **Encryption-as-a-Service** — service gọi Vault API thay vì tự quản lý DEK.
+
+> **Về "Envelope Encryption":** Vault Transit nội bộ sử dụng 2-level key hierarchy (DEK + KEK) nhưng ứng dụng không cần biết chi tiết. Từ góc nhìn kiến trúc, đây là envelope encryption với Vault làm KMS — đúng với G1 (Vault Transit, AES-256, quản lý vòng đời khóa).
+
+> **Demo D5:** `POST /api/billing/vault-encrypt` và `/api/billing/vault-decrypt` (billing-service) minh chứng luồng mã hóa/giải mã qua Vault Transit. Key rotation có thể thực hiện qua `vault write -f transit/keys/shopflow-master/rotate`.
 
 ### 5.7. Vòng đời token và revocation strategy
 
@@ -438,7 +446,7 @@ flowchart LR
 | IdP (Keycloak) | OIDC, PKCE, refresh rotation | OAuth2 RFC 6749, OIDC | Chống đánh cắp code/token |
 | S2S | Client Credentials JWT / mTLS | PKI, certificate binding | Tin cậy giữa microservice |
 | Webhook | HMAC-SHA256 | MAC, shared secret | Toàn vẹn callback, chống giả mạo |
-| Storage | Vault Transit envelope + AES-GCM | Symmetric crypto, key hierarchy | Bảo mật dữ liệu at-rest |
+| Storage | Vault Transit Encryption-as-a-Service (aes256-gcm96) | Symmetric crypto (AES-GCM), 2-level key hierarchy in Vault | Bảo mật dữ liệu at-rest; key không bao giờ expose cho app |
 | Chống replay | `nonce` + timestamp window | Replay attack | Áp dụng webhook và API nhạy cảm |
 | Key lifecycle | Rotation, revocation | Key management | Giảm thiệt hại khi lộ khóa |
 
@@ -446,11 +454,11 @@ flowchart LR
 
 | Vectơ (OWASP API 2023) | Biện pháp kiến trúc | Cơ chế mật mã / giao thức |
 |------------------------|----------------------|---------------------------|
-| API1 BOLA | AuthZ server-side + tenant/object check | JWT claims + policy kiểm tra object |
+| API1 BOLA | AuthZ server-side + ABAC (tenant_id) + RBAC admin | JWT claims + `services/shared/authz.js` |
 | API2 Broken Authentication | PKCE, token ngắn, refresh rotation | OIDC, JWS |
 | API3 Broken Object Property Level Authorization | Field-level authz, DTO whitelist | Policy + schema contract |
 | API4 Unrestricted Resource Consumption | Quota, rate-limit đa tầng | Gateway/WAF policy |
-| API5 Broken Function Level Authorization | RBAC + scope + server-side checks | JWT scope/role |
+| API5 Broken Function Level Authorization | RBAC (role trong JWT) + ABAC (tenant_id) | JWT `realm_access.roles` + server-side checks |
 | API6 Unrestricted Access to Sensitive Business Flows | Step-up auth, anti-automation | OIDC + risk control |
 | API7 SSRF | Egress deny metadata IP; URL allowlist | Network + input validation |
 | API8 Security Misconfiguration | IaC baseline, deny-by-default, hardening headers | Chính sách hạ tầng |

@@ -1,7 +1,5 @@
 # Node: edge  — trust zone: DMZ
-# Services: Nginx+ModSecurity WAF, Kong Gateway, mTLS proxies
-# Startup order: last (after app nodes + security + identity are healthy)
-# Usage: docker compose -p shopflow-edge --env-file ../../core/.env up -d
+# Services: Nginx+ModSecurity WAF, Kong Gateway, Webhook Authorizer, mTLS proxies
 
 services:
   edge-nginx:
@@ -22,6 +20,7 @@ services:
       - ../../core/certs/server.crt:/etc/nginx/conf/server.crt:ro
       - ../../core/certs/server.key:/etc/nginx/conf/server.key:ro
       - ../../core/nginx/modsecurity-custom.conf:/etc/modsecurity.d/owasp-crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf:ro
+      - ../../core/nginx/nginx.conf:/etc/nginx/conf.d/security-headers.conf:ro
     depends_on:
       - kong
     networks:
@@ -38,12 +37,31 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_JWT_AUD: ${KEYCLOAK_AUDIENCE:-shopflow-api}
     volumes:
       - ../../core/kong/kong.yml:/etc/kong/kong.yml:ro
     ports:
       - "127.0.0.1:8001:8001"
     networks:
       - shopflow_dmz
+      - shopflow_private
+
+  webhook-authorizer:
+    build:
+      context: ../../services
+      dockerfile: webhook-authorizer/Dockerfile
+    container_name: webhook-authorizer
+    environment:
+      PORT: 8080
+      BILLING_INTERNAL_URL: http://billing-service:8080
+      WEBHOOK_INTERNAL_SECRET: ${WEBHOOK_INTERNAL_SECRET:-lab-webhook-internal-secret-change-me}
+      HMAC_SECRET: ${HMAC_SECRET:-lab-hmac-secret-change-me}
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
+      VAULT_REQUIRED: ${VAULT_REQUIRED:-false}
+      REDIS_URL: redis://redis:6379
+      SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
+    networks:
       - shopflow_private
 
   internal-mtls-proxy:

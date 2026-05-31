@@ -1,5 +1,5 @@
 ﻿MTTD/MTTR drill summary (3 runs)
-Generated: 20260526-114406
-Avg MTTD (s): 0.242
-Avg MTTR (s): 0.568
-CSV: C:\Users\metan\OneDrive\Documents\Study\Crypto_Project\metrics\..\docs\evidence\mttd-mttr-drill-20260526-114406.csv
+Generated: 20260531-215727
+Avg MTTD (s): 0.237
+Avg MTTR (s): 0.564
+CSV: C:\Users\metan\OneDrive\Documents\Study\Crypto_project\metrics\..\docs\evidence\mttd-mttr-drill-20260531-215727.csv

@@ -82,7 +82,7 @@
 
 ---
 
-## 8) Bonus security hardening
+## 8) Bonus security hardening (Round 1 + Round 2)
 
 | # | Hạng mục | Trạng thái | Bằng chứng |
 |---|----------|------------|-----------|
@@ -91,6 +91,12 @@
 | 8.3 | Rate limit per-service + tenant quota | [x] | `core/kong/kong.yml`, `services/shared/index.js` |
 | 8.4 | Audit log + alert D1-D4/replay | [x] | `services/*`, `core/observability/alerts.yml` |
 | 8.5 | Security checks `layered 18/18` | [x] | `security/run-security-checks.ps1` |
+| 8.6 | Non-root containers (CIS 4.1) | [x] | Tất cả 4 Dockerfile — `USER appuser` |
+| 8.7 | TLS 1.2+, ECDHE, HSTS, session tickets off | [x] | `billing-mtls.conf`, `internal-mtls.conf` |
+| 8.8 | Security headers snippet edge nginx | [x] | `nginx/nginx.conf` → `/etc/nginx/conf.d/security-headers.conf` |
+| 8.9 | D5 Vault Transit AES-256-GCM demo | [x] | `billing-service/server.js`, `shared/index.js vaultTransitEncrypt` |
+| 8.10 | OPA RBAC: admin role bypass rules | [x] | `core/opa/policies/orders.rego`, `req.user.roles` từ JWT |
+| 8.11 | Kong JWT sync script | [x] | `core/keycloak/sync-kong-jwt-key.ps1` |
 
 ---
 

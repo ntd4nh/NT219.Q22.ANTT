@@ -19,14 +19,17 @@ Baseline lab gate: `security/run-security-checks.ps1` (layered 18/18).
 ## P2 — nang cap
 
 - [x] `core/docker-stack.yml` skeleton HA (edge, Kong, OPA, Keycloak, Vault, observability, secrets)
-- [x] OPA PDP + PEP pilot (`order-service`, `core/opa/policies/orders.rego`)
+- [x] OPA PEP toàn service: orders/users/billing/auth — RBAC (admin bypass) + ABAC (tenant_id) — `core/opa/policies/*.rego`
 - [x] PKCE SPA (`frontend/src/auth/pkce.js`, `/callback`)
 - [x] CI security fast/slow (`.github/workflows/security-pr.yml`, `security-nightly.yml`)
 - [x] Research metrics: prom-client histogram, recording rules, `metrics/run-g3-benchmark.ps1`
 - [x] Runbook sâu: `docs/runbook/*` (rotation, revocation, incident, onboarding)
-- [x] Test multi-instance consistency trong CI (`security/test-redis-consistency.ps1`, `ci/run-security-gate.sh`)
 - [x] S2S client_credentials + internal mTLS (`security/test-s2s-client-credentials.ps1`, `test-internal-mtls.ps1`)
-- [x] Gap checklist 100% (`implementation/09-gap-checklist-pass-fail.md`)
+- [x] D5 Vault Transit (AES-256-GCM): `billing-service vault-encrypt/vault-decrypt`, `shared/index.js vaultTransitEncrypt`
+- [x] Non-root containers (CIS 4.1): tất cả 4 Dockerfile `USER appuser`
+- [x] TLS 1.2+, ECDHE cipher suites, ssl_session_tickets off: `billing-mtls.conf`, `internal-mtls.conf`
+- [x] Kong JWT sync: `core/keycloak/sync-kong-jwt-key.ps1`
+- [x] Audit report theory↔practice: `audit/AUDIT-REPORT.md`
 
 ## Chay production overlay (lab host)
 

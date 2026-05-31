@@ -1,7 +1,5 @@
 # Node: security  — trust zone: Security Zone
-# Services: Vault OSS (Transit + KV), OPA policy engine, Redis (rate-limit + replay cache)
-# Startup order: 2nd — app services depend on redis, opa, vault
-# Usage: docker compose -p shopflow-security --env-file ../../core/.env up -d
+# Services: Vault OSS (Transit + KV), Redis (rate-limit + replay cache)
 
 services:
   redis:
@@ -15,22 +13,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    networks:
-      - shopflow_private
-
-  opa:
-    image: openpolicyagent/opa:0.68.0
-    container_name: opa
-    command:
-      - run
-      - --server
-      - --addr=0.0.0.0:8181
-      - --log-level=info
-      - /policies
-    volumes:
-      - ../../core/opa/policies:/policies:ro
-    ports:
-      - "8181:8181"
     networks:
       - shopflow_private
 

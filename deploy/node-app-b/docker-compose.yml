@@ -1,7 +1,5 @@
 # Node: app-b  — trust zone: App Private Subnet
 # Services: billing-service, auth-service
-# Startup order: 4th (parallel with node-app-a) — after node-security + node-identity
-# Usage: docker compose -p shopflow-app-b --env-file ../../core/.env up -d
 
 services:
   billing-service:
@@ -15,10 +13,9 @@ services:
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
       VAULT_REQUIRED: ${VAULT_REQUIRED:-false}
+      WEBHOOK_INTERNAL_SECRET: ${WEBHOOK_INTERNAL_SECRET:-lab-webhook-internal-secret-change-me}
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
       REDIS_URL: redis://redis:6379
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-shopflow-api}
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
@@ -43,8 +40,6 @@ services:
       KEYCLOAK_M2M_CLIENT_ID: ${KEYCLOAK_M2M_CLIENT_ID:-shopflow-s2s}
       KEYCLOAK_M2M_CLIENT_SECRET: ${KEYCLOAK_M2M_CLIENT_SECRET:-shopflow-s2s-secret-change-in-prod}
       KEYCLOAK_M2M_SCOPE: ${KEYCLOAK_M2M_SCOPE:-shopflow-api}
-      OPA_URL: http://opa:8181
-      OPA_ENABLED: ${OPA_ENABLED:-true}
       REDIS_URL: redis://redis:6379
       SHOPFLOW_ENV: ${SHOPFLOW_ENV:-lab}
     healthcheck:

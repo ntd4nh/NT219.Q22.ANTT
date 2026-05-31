@@ -30,7 +30,7 @@ Hướng dẫn lab: **bật gì**, **chạy lệnh gì**, **thứ tự kiểm tr
 | **PowerShell 5.1+** | Chạy script với `-ExecutionPolicy Bypass` (hoặc `RemoteSigned` cho user hiện tại). |
 | **Git** | Chỉ cần khi clone / `verify-final-backend` kiểm tra file tracked. |
 
-Không cần cài Keycloak/Grafana/Prometheus riêng — tất cả chạy trong Docker Compose (`core/docker-compose.yml`).
+Khong can cai Keycloak/Grafana/Prometheus rieng. Kien truc chuan hien tai la multi-node Compose (`deploy/node-*`) theo trust-zone trong docs; `core/docker-compose.yml` chi giu vai tro single-host compatibility.
 
 ### Cổng host cần trống (lab)
 
@@ -43,7 +43,7 @@ Không cần cài Keycloak/Grafana/Prometheus riêng — tất cả chạy trong
 | `3000` | Grafana |
 | `9090` | Prometheus |
 | `3100` | Loki |
-| `8181` | OPA |
+| — | (OPA đã gỡ — authZ tại service + webhook-authorizer) |
 | `8200` | Vault |
 | `127.0.0.1:8001` | Kong Admin API (chỉ localhost) |
 
@@ -86,42 +86,40 @@ Nếu cổng bị chiếm (ví dụ app khác dùng `8080`), token Keycloak sẽ
 ## Cài đặt lần đầu
 
 ```powershell
-# 1) Vào thư mục stack
+# 1) Tao cert lab (edge + mTLS client/server)
+cd core/certs
+powershell -ExecutionPolicy Bypass -File .\generate-certs.ps1
+cd ..\..
+
+# 2) Tao file env runtime (khong commit .env)
+Copy-Item .\core\.env.example .\core\.env
+
+# 3) Khoi dong toan bo multi-node topology (Data -> Security -> Identity -> App -> Edge -> Obs)
+powershell -ExecutionPolicy Bypass -File .\deploy\deploy-all.ps1 -Build
+
+# 4) Vault dev (unseal + policy app)
 cd core
-
-# 2) Chứng chỉ lab (edge + mTLS client/server)
-powershell -ExecutionPolicy Bypass -File .\certs\generate-certs.ps1
-
-# 3) File env runtime (không commit .env)
-Copy-Item .env.example .env
-# Sau bước Vault: dán VAULT_APP_TOKEN từ vault\.vault-app-token vào .env
-
-# 4) Build & khởi động toàn stack
-docker compose build
-docker compose up -d
-
-# 5) Vault dev (unseal + policy app) — chạy khi container vault đã listen
 powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
-# Cập nhật .env: VAULT_APP_TOKEN=<nội dung .vault-app-token>
+# Cap nhat .env: VAULT_APP_TOKEN=<noi dung .vault-app-token>
 
-# 6) (Tuỳ chọn) Đồng bộ client S2S trên realm đang chạy
+# 5) Dong bo Kong JWT public key (BAT BUOC)
+powershell -ExecutionPolicy Bypass -File .\keycloak\sync-kong-jwt-key.ps1
+docker compose -p shopflow-edge restart kong
+
+# 6) (Tuy chon) Dong bo client S2S
 powershell -ExecutionPolicy Bypass -File .\keycloak\sync-s2s-client.ps1
-
-# 7) Về repo root
 cd ..
 ```
 
-**Lưu ý:** `docker compose up -d` đã gồm `order-service`, `billing-service`, `auth-service`, `user-service` — không cần `up` riêng từng service trừ khi bạn chỉ restart một service sau khi sửa code.
+**Luu y:** multi-node la source of truth. Neu can chay nhanh single-host, moi dung `core/docker-compose.yml` cho local debug.
 
 ---
 
 ## Khởi động hàng ngày
 
 ```powershell
-# Bật Docker Desktop trước
-cd core
-docker compose up -d
-cd ..
+# Bat Docker Desktop truoc
+powershell -ExecutionPolicy Bypass -File .\deploy\deploy-all.ps1
 ```
 
 Sau đó làm mục [Đợi stack sẵn sàng](#đợi-stack-sẵn-sàng) rồi [Kiểm tra theo thứ tự](#kiểm-tra-theo-thứ-tự-khuyến-nghị).
@@ -129,8 +127,7 @@ Sau đó làm mục [Đợi stack sẵn sàng](#đợi-stack-sẵn-sàng) rồi 
 Dừng stack (giữ data volume):
 
 ```powershell
-cd core
-docker compose down
+powershell -ExecutionPolicy Bypass -File .\deploy\stop-all.ps1
 ```
 
 ---
@@ -172,12 +169,17 @@ if (-not $ok) { throw "Keycloak not ready — check: docker logs keycloak --tail
 ### Kiểm tra container
 
 ```powershell
-cd core
-docker compose ps
+docker compose -p shopflow-data ps
+docker compose -p shopflow-security ps
+docker compose -p shopflow-identity ps
+docker compose -p shopflow-app-a ps
+docker compose -p shopflow-app-b ps
+docker compose -p shopflow-edge ps
+docker compose -p shopflow-obs ps
 docker logs keycloak --tail 30
 ```
 
-Các service quan trọng: `edge-nginx`, `kong`, `keycloak`, `order-service`, `billing-service`, `opa`, `prometheus` — trạng thái **Up** / **healthy** (nếu có healthcheck).
+Các service quan trọng: `edge-nginx`, `kong`, `webhook-authorizer`, `keycloak`, `order-service`, `billing-service`, `prometheus` — trạng thái **Up** / **healthy**.
 
 ---
 
@@ -187,13 +189,12 @@ Chạy từ **repo root** (`Crypto_Project`). Thứ tự: phụ thuộc ít → 
 
 | # | Lệnh | Cần gì | Kỳ vọng |
 |---|------|--------|---------|
-| 1 | `cd core` → `docker compose ps` | Docker | Các container Up |
+| 1 | `docker compose -p shopflow-edge ps` | Docker | Cac container edge Up |
 | 2 | Đợi Keycloak (mục trên) | `:8080` | OIDC config 200 |
-| 3 | `powershell -ExecutionPolicy Bypass -File .\security\test-opa-policy.ps1` | OPA `:8181` | `OPA multi-service matrix: PASS` |
-| 4 | `powershell -ExecutionPolicy Bypass -File .\metrics\run-incident-drill.ps1 -Runs 3` | Prometheus `:9090` | CSV trong `docs/evidence/` |
-| 5 | `powershell -ExecutionPolicy Bypass -File .\metrics\run-g3-benchmark.ps1 -Requests 30 -Runs 2` | Keycloak + edge `:80` | Evidence latency/block-rate |
-| 6 | `powershell -ExecutionPolicy Bypass -File .\security\run-security-checks.ps1` | Full stack + certs | `19/19` (hoặc tương đương) PASS, exit `0` |
-| 7 | `powershell -ExecutionPolicy Bypass -File .\scripts\verify-final-backend.ps1` | Docker + bước 6 | Static + runtime + layer gate |
+| 3 | `powershell -ExecutionPolicy Bypass -File .\metrics\run-incident-drill.ps1 -Runs 3` | Prometheus `:9090` | CSV trong `docs/evidence/` |
+| 4 | `powershell -ExecutionPolicy Bypass -File .\metrics\run-g3-benchmark.ps1 -Requests 30 -Runs 2` | Keycloak + edge `:80` | Evidence latency/block-rate |
+| 5 | `powershell -ExecutionPolicy Bypass -File .\security\run-security-checks.ps1` | Full stack + certs | PASS, exit `0` |
+| 6 | `powershell -ExecutionPolicy Bypass -File .\scripts\verify-final-backend.ps1` | Docker + bước 5 | Static + runtime + layer gate |
 
 ### Script bổ sung (từng hạng mục)
 
@@ -250,7 +251,7 @@ Sau khi chạy, đọc:
 | Keycloak | http://localhost:8080 | Realm `shopflow` |
 | Keycloak Admin | http://localhost:8080/admin | `admin` / `admin` (master) |
 | Kong Admin | http://127.0.0.1:8001 | Chỉ localhost |
-| OPA | http://localhost:8181 | Policy test |
+| Webhook Authorizer | (nội bộ qua Kong) | D3 HMAC tại authorizer |
 | Vault | http://localhost:8200 | UI/API dev |
 | Grafana | http://localhost:3000 | Dashboard **ShopFlow Research Metrics** |
 | Prometheus | http://localhost:9090 | Metrics + alert drill |
@@ -337,9 +338,10 @@ docker compose restart order-service user-service billing-service auth-service
 - Chạy `core/keycloak/sync-s2s-client.ps1` sau khi Keycloak ready.  
 - Lab enforce qua audience/client mapper — xem `services/shared/m2m-auth.js`.
 
-### OPA PASS nhưng API vẫn sai
+### Webhook 401 tại D3
 
-- OPA test gọi trực tiếp policy bundle; API còn Kong + service PEP — debug theo layer **Gateway** / **Service** trong `run-security-checks.ps1`.
+- Luồng: `billing-mtls-proxy:8443` → Kong → **webhook-authorizer** → billing internal.
+- Kiểm tra `WEBHOOK_INTERNAL_SECRET` khớp giữa authorizer và billing-service.
 
 ### Prometheus/Loki fail (Observability layer)
 

@@ -1,12 +1,65 @@
 Bonus security hardening (lab)
-Date: 2026-05-24
+Last updated: 2026-05-31
 
-Implemented:
+=== Round 1 (2026-05-24) ===
+
 - Vault: app-readonly token via init-dev.ps1 -> core/vault/.vault-app-token -> VAULT_APP_TOKEN
 - mTLS: webhook forced via billing-mtls-proxy :8443; edge ModSecurity blocks cleartext POST /api/billing/webhook
 - Kong: per-service rate limits; admin API only on 127.0.0.1:8001
 - App: tenant rate limit (TENANT_RATE_LIMIT_RPM), security audit logs, TOKEN_REPLAY metric
 - Observability: expanded alerts.yml; Promtail JSON labels for event/reason/service
+- Security gate: run-security-checks.ps1 layered 18/18 (Prereq, EdgeIngress, Gateway, Service, Auth, mTLS, Observability)
+- Keycloak: KC_HOSTNAME=localhost + strict backchannel off
 
-Security gate: run-security-checks.ps1 layered 18/18 (7 layers: Prereq, EdgeIngress, Gateway, Service, Auth, mTLS, Observability)
-Keycloak: KC_HOSTNAME=localhost + strict backchannel off — refresh từ auth-service (keycloak:8080) khớp token lab (localhost:8080)
+=== Round 2 (2026-05-31) ===
+
+Container hardening:
+- All 4 service Dockerfiles: thêm non-root user (addgroup/adduser appuser), chown /app, USER appuser
+  Affected: order-service, user-service, billing-service, auth-service
+  Rationale: CIS Docker Benchmark 4.1 — container không chạy root
+
+TLS hardening (mTLS proxies):
+- billing-mtls.conf: thêm ssl_protocols TLSv1.2 TLSv1.3, cipher suites ECDHE-*-GCM, ssl_session_tickets off
+- internal-mtls.conf: idem
+- Cả 2 file: thêm security headers (HSTS max-age=63072000, X-Content-Type-Options nosniff, X-Frame-Options DENY, X-XSS-Protection, Referrer-Policy)
+  Rationale: NIST SP 800-52 Rev2 — TLS 1.2+ bắt buộc; OWASP Secure Headers Project
+
+Edge nginx security headers:
+- nginx/nginx.conf đổi thành security-headers snippet (HSTS, nosniff, X-Frame, XSS, Referrer)
+- Mount vào edge-nginx container tại /etc/nginx/conf.d/security-headers.conf
+- Áp dụng cho cả core/docker-compose.yml và deploy/node-edge/docker-compose.yml
+
+Vault config:
+- vault/config.hcl: api_addr sửa từ "http://127.0.0.1:8200" thành "http://vault:8200"
+  Rationale: địa chỉ phải resolvable trong Docker overlay network khi Vault trả redirect
+
+OPA policies mở rộng:
+- orders.rego: thêm rules cho catalog_lot (list), vendor_profile (read, tenant-scoped),
+  shipment (list), quote (create, lot_tenant_id check)
+- Thêm deny_reason CROSS_TENANT_QUOTE và MISSING_TENANT
+  Rationale: defense-in-depth cho các route AquaTrade domain mới trong order-service
+
+Vault Transit demo:
+- billing-service: thêm /api/billing/vault-encrypt và /api/billing/vault-decrypt
+- shared/index.js: thêm vaultTransitEncrypt() và vaultTransitDecrypt()
+- kong.yml: thêm billing-vault-demo-route (no JWT)
+- Chứng minh AES-256-GCM envelope encryption (G1, Luồng 4 kiến trúc)
+
+Kong JWT sync:
+- core/keycloak/sync-kong-jwt-key.ps1: tự động lấy RS256 public key từ Keycloak JWKS
+  và patch kong.yml; sau đó nhắc restart Kong
+
+=== Round 3 (2026-05-31) — runtime khớp books ===
+
+- Webhook: container `webhook-authorizer` (edge); Kong `/api/billing/webhook` → authorizer → billing internal
+- OPA: gỡ khỏi deploy; authZ `services/shared/authz.js`
+- DB creds: Vault KV `secret/data/db-credentials`; không password tĩnh trong node-data/node-app-a compose
+- Kong JWT: `iss`/`exp` plugin + pre-function kiểm `aud` (`KONG_JWT_AUD=shopflow-api`)
+- Rego files (orders.rego): lịch sử lab only — không còn OPA runtime
+
+=== Known accepted risks (lab) ===
+
+- Redis không có password: acceptable trong private Docker network, không expose ra host
+- Vault TLS disabled (tls_disable=1): acceptable cho lab, toàn bộ traffic trong private network
+- Keycloak start-dev mode trong multi-node Compose: acceptable cho lab/demo
+- Kong JWT key cần sync thủ công sau khi Keycloak init: documented trong RUNBOOK + sync-kong-jwt-key.ps1
