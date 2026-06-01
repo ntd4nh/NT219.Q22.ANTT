@@ -28,7 +28,7 @@
 
 | # | Hạng mục | Trạng thái | Bằng chứng |
 |---|----------|------------|-----------|
-| 2.1 | `run-security-checks.ps1` → **layered 18/18** | [x] | `docs/evidence/security-checks-output.txt` + `security-layer-summary.txt` |
+| 2.1 | `run-security-checks.ps1` → **layered 17–19 checks** (17 khi không có `REFRESH_TOKEN`, 19 khi đủ) | [x] | `docs/evidence/security-checks-output.txt` + `security-layer-summary.txt` |
 | 2.2 | D1 cross-tenant → **403** | [x] | Code `order-service` + contract |
 | 2.3 | D2 expired token → **401** | [x] | `services/shared` JWT middleware |
 | 2.4 | D3 forged webhook → **401** | [x] | `billing-service` HMAC |
@@ -95,7 +95,7 @@
 | 8.7 | TLS 1.2+, ECDHE, HSTS, session tickets off | [x] | `billing-mtls.conf`, `internal-mtls.conf` |
 | 8.8 | Security headers snippet edge nginx | [x] | `nginx/nginx.conf` → `/etc/nginx/conf.d/security-headers.conf` |
 | 8.9 | D5 Vault Transit AES-256-GCM demo | [x] | `billing-service/server.js`, `shared/index.js vaultTransitEncrypt` |
-| 8.10 | OPA RBAC: admin role bypass rules | [x] | `core/opa/policies/orders.rego`, `req.user.roles` từ JWT |
+| 8.10 | RBAC: admin role bypass rules (in-process, OPA runtime gỡ) | [x] | `services/shared/authz.js` — `isAdmin()` + `checkTenantAccess()`, `req.user.roles` từ JWT |
 | 8.11 | Kong JWT sync script | [x] | `core/keycloak/sync-kong-jwt-key.ps1` |
 
 ---

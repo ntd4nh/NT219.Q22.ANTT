@@ -144,7 +144,8 @@
 | **OIDC IdP (Keycloak)** | Security zone | Realm/users; OIDC; phát access/refresh token; client registry | HTTPS, OAuth2/OIDC |
 | **User Service** | App private subnet | CRUD profile; enforce ownership tenant/user | HTTPS private network |
 | **Order Service** | App private subnet | CRUD đơn hàng; **server-side authz** chống BOLA | HTTPS |
-| **Billing Service** | App private subnet | Thanh toán, hóa đơn; dữ liệu nhạy cảm | HTTPS |
+| **Billing Service** | App private subnet | Webhook HMAC verify (qua Webhook Authorizer); Vault Transit encrypt/decrypt; không truy cập DB trực tiếp | HTTPS |
+| **Auth Service** | App private subnet | Proxy token refresh (D2); phát S2S client credentials; Redis replay guard | HTTPS |
 | **Vault OSS (Transit + KV)** | Security zone | Master key transit; lưu API key/HMAC secret; rotation | HTTPS private network |
 | **PostgreSQL** | Data zone | Persistence; encryption at-rest; không public | 5432 (private network) |
 | **Prometheus + Loki + Grafana** | Ops zone | Log JSON; metric; alert failed auth, rate spike | HTTPS/GRPC private network |
@@ -197,7 +198,6 @@ flowchart TB
   BillingSvc --> Vault
   UserSvc --> PG
   OrderSvc --> PG
-  BillingSvc --> PG
   APIGW --> Obs
   UserSvc --> Obs
   OrderSvc --> Obs
@@ -272,7 +272,6 @@ flowchart LR
   BS --> Vault
   US --> DB
   OS --> DB
-  BS --> DB
   GW --> Logs
   US --> Logs
   OS --> Logs
@@ -303,6 +302,7 @@ flowchart TB
 
   subgraph appNodeB [App_Node_B_Docker]
     BS[Billing_Service_Container]
+    AS[Auth_Service_Container]
   end
 
   subgraph dataNode [Data_Node]
@@ -328,7 +328,6 @@ flowchart TB
   GW --> BS
   US --> DB
   OS --> DB
-  BS --> DB
   US --> Vault
   OS --> Vault
   BS --> Vault

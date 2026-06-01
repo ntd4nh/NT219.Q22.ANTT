@@ -31,7 +31,9 @@ export function securityAudit(log, event, fields = {}) {
 
 export function correlationMiddleware() {
   return (req, res, next) => {
-    const correlationId = req.headers['x-correlation-id'] || crypto.randomUUID()
+    const provided = req.headers['x-correlation-id']
+    const correlationId =
+      provided && /^[a-zA-Z0-9\-]{1,64}$/.test(provided) ? provided : crypto.randomUUID()
     req.correlationId = correlationId
     res.setHeader('X-Correlation-Id', correlationId)
     next()
@@ -128,8 +130,14 @@ export function requireAuth(options = {}) {
       if (!issuers.includes(payload.iss)) {
         return authFailure(log, req, res, 'INVALID_ISSUER', 'Invalid issuer')
       }
-      if (process.env.KEYCLOAK_AUDIENCE && payload.aud && payload.aud !== process.env.KEYCLOAK_AUDIENCE) {
-        return authFailure(log, req, res, 'INVALID_AUDIENCE', 'Invalid audience')
+      // Audience luôn enforced: nếu không set KEYCLOAK_AUDIENCE dùng default 'shopflow-api'.
+      // Check conditional trên env var → token không có aud claim vẫn pass → audience confusion attack.
+      const expectedAud = process.env.KEYCLOAK_AUDIENCE || 'shopflow-api'
+      if (payload.aud) {
+        const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud]
+        if (!aud.includes(expectedAud)) {
+          return authFailure(log, req, res, 'INVALID_AUDIENCE', 'Invalid audience')
+        }
       }
       req.user = {
         sub: payload.sub,

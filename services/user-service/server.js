@@ -23,6 +23,12 @@ const BLOCKED_HOSTNAMES = new Set(['localhost', 'metadata.google.internal'])
 const ALLOWLIST = (process.env.SSRF_ALLOWLIST || 'cdn.shopflow.local,imgur.com').split(',').map((h) => h.trim())
 
 function isPrivateIp(ip) {
+  // IPv6: loopback, IPv4-mapped, unique-local, link-local
+  if (ip === '::1') return true
+  if (/^::ffff:/i.test(ip)) return isPrivateIp(ip.replace(/^::ffff:/i, ''))
+  if (/^fe[89ab][0-9a-f]:/i.test(ip)) return true  // fe80::/10 link-local
+  if (/^f[cd][0-9a-f]{2}:/i.test(ip)) return true   // fc00::/7 unique-local
+  // IPv4
   if (ip.startsWith('10.') || ip.startsWith('127.') || ip.startsWith('169.254.')) return true
   if (ip.startsWith('192.168.')) return true
   const parts = ip.split('.').map(Number)
@@ -73,7 +79,7 @@ app.get('/api/users', auth, (req, res) => {
   res.json({ sub: req.user.sub, tenant_id: req.user.tenantId })
 })
 
-app.post('/api/users/fetch-url', requireAuth({ optional: true, log }), async (req, res) => {
+app.post('/api/users/fetch-url', requireAuth({ log }), async (req, res) => {
   const url = req.body?.url
   if (!url) return res.status(400).json({ error: 'BAD_REQUEST', message: 'url required' })
   const check = await validateUrl(url)

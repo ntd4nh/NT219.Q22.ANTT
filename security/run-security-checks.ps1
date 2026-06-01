@@ -169,8 +169,8 @@ function Write-LayerSummaryFile {
   $lines | Set-Content -Path $SummaryFile -Encoding utf8
 }
 
-$BaseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { "http://localhost" }
-$BaseUrlTls = if ($env:BASE_URL_TLS) { $env:BASE_URL_TLS } else { "https://localhost" }
+$BaseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { "http://localhost:8888" }
+$BaseUrlTls = if ($env:BASE_URL_TLS) { $env:BASE_URL_TLS } else { "https://localhost:8444" }
 $MtlsUrlDocker = if ($env:MTLS_WEBHOOK_URL_DOCKER) { $env:MTLS_WEBHOOK_URL_DOCKER } else { "https://host.docker.internal:8443/api/billing/webhook" }
 $CertDir = if ($env:CERT_DIR) { $env:CERT_DIR } else { (Join-Path $PSScriptRoot "..\core\certs") }
 $KeycloakUrl = if ($env:KEYCLOAK_WELLKNOWN_URL) { $env:KEYCLOAK_WELLKNOWN_URL } else { "http://localhost:8080/realms/shopflow/.well-known/openid-configuration" }
@@ -197,22 +197,13 @@ $certRoot = (Resolve-Path $CertDir).Path
 Test-PrereqFile -Name "PREREQ_client_cert" -Path (Join-Path $certRoot "client.crt") | Out-Null
 Test-PrereqFile -Name "PREREQ_client_key" -Path (Join-Path $certRoot "client.key") | Out-Null
 Invoke-ExpectedStatus -Name "PREREQ_keycloak_reachable" -Method "GET" -Uri $KeycloakUrl -Headers @{} -ExpectedStatus 200 | Out-Null
-$redisUrl = if ($env:REDIS_URL) { $env:REDIS_URL } else { "redis://localhost:6379" }
-try {
-  $redisPing = [int](& curl.exe -s -o NUL -w "%{http_code}" --max-time 5 "http://localhost:6379" 2>$null)
-  if ($redisPing -gt 0) {
-    Write-Host "[PASS] PREREQ_redis_reachable -> tcp" -ForegroundColor Green
-    Record-Check $true
-  } else { throw "no response" }
-} catch {
-  $dockerRedis = docker exec redis redis-cli ping 2>$null
-  if ($dockerRedis -match "PONG") {
-    Write-Host "[PASS] PREREQ_redis_reachable -> PONG" -ForegroundColor Green
-    Record-Check $true
-  } else {
-    Write-Host "[FAIL] PREREQ_redis_reachable -> down" -ForegroundColor Red
-    Record-Check $false
-  }
+$dockerRedis = docker exec redis redis-cli ping 2>$null
+if ($dockerRedis -match "PONG") {
+  Write-Host "[PASS] PREREQ_redis_reachable -> PONG" -ForegroundColor Green
+  Record-Check $true
+} else {
+  Write-Host "[FAIL] PREREQ_redis_reachable -> down" -ForegroundColor Red
+  Record-Check $false
 }
 End-Layer -Name "Prereq"
 

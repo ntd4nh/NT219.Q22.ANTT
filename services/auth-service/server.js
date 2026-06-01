@@ -10,7 +10,7 @@ import {
   redisPing,
   requireM2mAuth,
 } from '../shared/index.js'
-import { isMarked, markUsed, refreshTokenKey } from '../shared/redis-state.js'
+import { markOnce, refreshTokenKey } from '../shared/redis-state.js'
 
 validateSecurityConfig('auth-service')
 
@@ -47,7 +47,9 @@ app.get('/api/internal/auth/status', m2mAuth, async (_req, res) => {
   res.json({ service: 'auth-service', redis })
 })
 
-app.post('/api/auth/s2s-token', async (req, res) => {
+// Chỉ cho phép từ internal network (Kong sẽ không route path này ra ngoài).
+// Thêm tầng kiểm tra: nếu không có header nội bộ thì từ chối.
+app.post('/api/internal/auth/s2s-token', m2mAuth, async (req, res) => {
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: M2M_CLIENT_ID,
@@ -80,7 +82,10 @@ app.post('/api/auth/refresh', async (req, res) => {
     securityAudit(log, 'AUTH_FAILED', { correlationId: req.correlationId, reason: 'MISSING_REFRESH_TOKEN' })
     return res.status(401).json({ error: 'UNAUTHORIZED', message: 'refresh_token required' })
   }
-  if (await isMarked(refreshTokenKey(refreshToken))) {
+  // Atomic SET NX: đặt mark TRƯỚC khi gọi Keycloak để tránh race condition TOCTOU.
+  // isMarked + markUsed là hai lệnh tách biệt — hai request đồng thời có thể cùng qua check.
+  const alreadyUsed = await markOnce(refreshTokenKey(refreshToken), REFRESH_TTL_SEC)
+  if (alreadyUsed) {
     incMetric('shopflow_token_replay_total')
     incMetric('shopflow_auth_failures_total')
     securityAudit(log, 'TOKEN_REPLAY', { correlationId: req.correlationId, reason: 'REFRESH_REPLAY' })
@@ -105,10 +110,6 @@ app.post('/api/auth/refresh', async (req, res) => {
         detail: data.error || 'refresh_failed',
       })
       return res.status(401).json({ error: 'UNAUTHORIZED', message: data.error_description || data.error })
-    }
-    await markUsed(refreshTokenKey(refreshToken), REFRESH_TTL_SEC)
-    if (data.refresh_token) {
-      await markUsed(refreshTokenKey(data.refresh_token), REFRESH_TTL_SEC)
     }
     res.json(data)
   } catch (e) {

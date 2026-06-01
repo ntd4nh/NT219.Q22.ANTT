@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import express from 'express'
 import pg from 'pg'
 import {
@@ -152,7 +153,7 @@ app.post('/api/quotes', auth, rateLimit, async (req, res) => {
     return res.status(403).json({ error: 'BOLA_BLOCKED', message: 'Cross-tenant quote denied' })
   }
   const totalVnd = Number(quantityKg) * Number(lot.unit_price_vnd)
-  const quoteId = `q-${Date.now()}`
+  const quoteId = `q-${crypto.randomUUID()}`
   await pool.query(
     `INSERT INTO quotes (id, tenant_id, lot_id, quantity_kg, total_vnd, quote_status)
      VALUES ($1, $2, $3, $4, $5, 'draft')`,

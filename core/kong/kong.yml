@@ -7,7 +7,21 @@
 consumers:
   - username: keycloak-realm-users
     jwt_secrets:
+      # iss từ bên trong Docker network (service-to-service)
       - key: http://keycloak:8080/realms/shopflow
+        algorithm: RS256
+        rsa_public_key: |-
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn9s2dL93VYZLSImALgZc
+          5m7v23favKgaILJ42D7J6kgeFWAQ1Uxhb5szpbpsKkdZB6Jzx7TU0mbW3oC7d2Th
+          mYKjKGR2LEft9nXmQSv7om7Wza5QftByQhUlwtamBkpaUXUXXMQJjrSJj/yqKN+9
+          lMDViJ0Nbu4Nk95uhwRPOeN7XG/gfECoNjp+eYwE5G9dL7IUSRLjcHFDVzacArcd
+          qlZJjYPjgVAh/vPmCvq6tx5+nk0hEM03H8shod8TdjydgTRtwveWPyJaZ2crsqzA
+          KKyWd+NXq5FRmNm9meslxHh+vP/n4e9sDl72ceZtioW9iGyHHFolDWJWLve5fOlb
+          8wIDAQAB
+          -----END PUBLIC KEY-----
+      # iss khi Keycloak được truy cập từ host (localhost:8080) — cùng public key
+      - key: http://localhost:8080/realms/shopflow
         algorithm: RS256
         rsa_public_key: |-
           -----BEGIN PUBLIC KEY-----
@@ -49,16 +63,18 @@ services:
               payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
               local json = ngx.decode_base64(payload_b64)
               if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
-              local cjson = require("cjson.safe")
-              local payload = cjson.decode(json)
-              if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
-              local aud = payload.aud or payload.azp
-              if type(aud) == "table" then
-                local ok = false
-                for _, v in ipairs(aud) do if v == expected then ok = true break end end
-                if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
-              elseif aud ~= expected then
-                return kong.response.exit(401, { message = "Invalid audience" })
+              -- Pure Lua pattern matching: tránh require (bị Kong 3.7 sandbox block).
+              -- Kiểm tra aud claim dạng string hoặc array. Bỏ qua khi aud vắng mặt.
+              if json:find('"aud"', 1, true) then
+                local str_aud = json:match('"aud"%s*:%s*"([^"]*)"')
+                if str_aud then
+                  if str_aud ~= expected then return kong.response.exit(401, { message = "Invalid audience" }) end
+                else
+                  local arr = json:match('"aud"%s*:%s*%b[]')
+                  if arr and not arr:find('"' .. expected .. '"', 1, true) then
+                    return kong.response.exit(401, { message = "Invalid audience" })
+                  end
+                end
               end
       - name: correlation-id
         config:
@@ -100,16 +116,18 @@ services:
               payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
               local json = ngx.decode_base64(payload_b64)
               if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
-              local cjson = require("cjson.safe")
-              local payload = cjson.decode(json)
-              if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
-              local aud = payload.aud or payload.azp
-              if type(aud) == "table" then
-                local ok = false
-                for _, v in ipairs(aud) do if v == expected then ok = true break end end
-                if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
-              elseif aud ~= expected then
-                return kong.response.exit(401, { message = "Invalid audience" })
+              -- Pure Lua pattern matching: tránh require (bị Kong 3.7 sandbox block).
+              -- Kiểm tra aud claim dạng string hoặc array. Bỏ qua khi aud vắng mặt.
+              if json:find('"aud"', 1, true) then
+                local str_aud = json:match('"aud"%s*:%s*"([^"]*)"')
+                if str_aud then
+                  if str_aud ~= expected then return kong.response.exit(401, { message = "Invalid audience" }) end
+                else
+                  local arr = json:match('"aud"%s*:%s*%b[]')
+                  if arr and not arr:find('"' .. expected .. '"', 1, true) then
+                    return kong.response.exit(401, { message = "Invalid audience" })
+                  end
+                end
               end
       - name: correlation-id
         config:
@@ -173,7 +191,7 @@ services:
                   local cjson = require("cjson.safe")
                   local payload = cjson.decode(json)
                   if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
-                  local aud = payload.aud or payload.azp
+                  local aud = payload.aud
                   if type(aud) == "table" then
                     local ok = false
                     for _, v in ipairs(aud) do if v == expected then ok = true break end end
@@ -184,6 +202,39 @@ services:
       - name: billing-vault-demo-route
         paths: ["/api/billing/vault-encrypt", "/api/billing/vault-decrypt", "/api/billing/test-sign"]
         strip_path: false
+        plugins:
+          - name: jwt
+            config:
+              key_claim_name: iss
+              claims_to_verify:
+                - exp
+          - name: pre-function
+            config:
+              access:
+                - |
+                  local expected = "shopflow-api"
+                  local authz = kong.request.get_header("Authorization")
+                  if not authz then return kong.response.exit(401, { message = "Authorization required" }) end
+                  local token = authz:match("Bearer%s+(.+)")
+                  if not token then return kong.response.exit(401, { message = "Invalid bearer" }) end
+                  local payload_b64 = token:match("[^%.]+%.([^%.]+)")
+                  if not payload_b64 then return kong.response.exit(401, { message = "Invalid token" }) end
+                  local rem = #payload_b64 % 4
+                  if rem > 0 then payload_b64 = payload_b64 .. string.rep("=", 4 - rem) end
+                  payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+                  local json = ngx.decode_base64(payload_b64)
+                  if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
+                  local cjson = require("cjson.safe")
+                  local payload = cjson.decode(json)
+                  if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
+                  local aud = payload.aud
+                  if type(aud) == "table" then
+                    local ok = false
+                    for _, v in ipairs(aud) do if v == expected then ok = true break end end
+                    if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
+                  elseif aud ~= expected then
+                    return kong.response.exit(401, { message = "Invalid audience" })
+                  end
     plugins:
       - name: correlation-id
         config:

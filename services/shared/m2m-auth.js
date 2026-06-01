@@ -32,7 +32,9 @@ function parseScopes(scopeField) {
 export function requireM2mAuth(options = {}) {
   const log = options.log || null
   const requiredScope = options.scope || process.env.KEYCLOAK_M2M_SCOPE || 'shopflow-api'
-  const enforceScope = options.enforceScope ?? (process.env.KEYCLOAK_M2M_ENFORCE_SCOPE === 'true')
+  // Default true: scope là ranh giới authorization chính của M2M token.
+  // Opt-out bằng KEYCLOAK_M2M_ENFORCE_SCOPE=false hoặc options.enforceScope=false.
+  const enforceScope = options.enforceScope ?? (process.env.KEYCLOAK_M2M_ENFORCE_SCOPE !== 'false')
   const expectedClient = process.env.KEYCLOAK_M2M_CLIENT_ID || 'shopflow-s2s'
   const expectedAudience = process.env.KEYCLOAK_AUDIENCE || 'shopflow-api'
   const issuers = (process.env.KEYCLOAK_ISSUERS || 'http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow')

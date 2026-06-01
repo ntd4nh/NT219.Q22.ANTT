@@ -1,3 +1,6 @@
+# NOT ACTIVE — OPA runtime đã được gỡ khỏi deployment.
+# AuthZ thực tế nằm trong services/shared/authz.js (in-process).
+# File này giữ lại làm tài liệu policy intent cho đồ án NT219.
 package shopflow.users
 
 default allow = false

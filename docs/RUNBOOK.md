@@ -36,16 +36,20 @@ Khong can cai Keycloak/Grafana/Prometheus rieng. Kien truc chuan hien tai la mul
 
 | Cổng | Dịch vụ |
 |------|---------|
-| `80`, `443` | Edge nginx (API qua Kong) |
+| `8888` | Edge nginx HTTP (API qua Kong) — **chỉ multi-node** (`deploy/node-edge/`) |
+| `8444` | Edge nginx HTTPS — **chỉ multi-node** |
 | `8080` | Keycloak |
 | `8443` | Billing webhook **mTLS** |
 | `9443` | Internal mTLS proxy (S2S lab) |
 | `3000` | Grafana |
 | `9090` | Prometheus |
 | `3100` | Loki |
-| — | (OPA đã gỡ — authZ tại service + webhook-authorizer) |
 | `8200` | Vault |
 | `127.0.0.1:8001` | Kong Admin API (chỉ localhost) |
+
+> **Cảnh báo cổng — single-host vs multi-node:** `core/docker-compose.yml` (single-host) dùng cổng `80:8080` và `443:8443` — tức edge nginx lắng nghe tại `localhost:80`. Ngược lại, `deploy/node-edge/docker-compose.yml` (multi-node, chuẩn lab) dùng `8888:8080` và `8444:8443`. Mọi script dùng `BASE_URL=http://localhost:8888` sẽ **thất bại** khi chạy single-host. Kiểm tra compose file đang dùng trước khi chạy script.
+
+> **Ghi chú Windows:** Nếu XAMPP/Apache đang chiếm cổng 8080, chạy `fix-port80-admin.bat` (quyền admin) để dừng Apache trước khi khởi động stack.
 
 Nếu cổng bị chiếm (ví dụ app khác dùng `8080`), token Keycloak sẽ fail — đổi port trong compose hoặc tắt process xung đột.
 
@@ -234,7 +238,7 @@ Sau khi chạy, đọc:
 ### Gate checklist gap (tài liệu)
 
 - `implementation/08-production-readiness.md` — production  
-- `implementation/09-gap-checklist-pass-fail.md` — 20/20 khi stack lab PASS  
+- `implementation/07-final-backend-checklist.md` — 20/20 khi stack lab PASS  
 
 ---
 
@@ -242,12 +246,12 @@ Sau khi chạy, đọc:
 
 | Thành phần | URL / cách gọi | Ghi chú |
 |------------|----------------|---------|
-| API edge (HTTP) | `http://localhost/api/...` | Qua Kong; protected routes cần `Authorization: Bearer <token>` |
-| API edge (HTTPS) | `https://localhost/api/...` | TLS lab cert |
-| Order list (D1) | `GET http://localhost/api/orders` | Token `tenant-a-user` → 200 |
-| BOLA (D1) | `GET http://localhost/api/orders/order-tenant-b` | Token tenant A → **403** |
-| Billing public | `GET http://localhost/api/billing/status` | Không cần token (gateway) |
-| Webhook D3 | `POST https://localhost:8443/api/billing/webhook` | **mTLS + HMAC** — không gọi qua `:80` |
+| API edge (HTTP) | `http://localhost:8888/api/...` | Qua Kong; protected routes cần `Authorization: Bearer <token>` |
+| API edge (HTTPS) | `https://localhost:8444/api/...` | TLS lab cert |
+| Order list (D1) | `GET http://localhost:8888/api/orders` | Token `tenant-a-user` → 200 |
+| BOLA (D1) | `GET http://localhost:8888/api/orders/order-tenant-b` | Token tenant A → **403** |
+| Billing public | `GET http://localhost:8888/api/billing` | Không cần token (gateway) |
+| Webhook D3 | `POST https://localhost:8443/api/billing/webhook` | **mTLS + HMAC** — không gọi qua `:8888` |
 | Keycloak | http://localhost:8080 | Realm `shopflow` |
 | Keycloak Admin | http://localhost:8080/admin | `admin` / `admin` (master) |
 | Kong Admin | http://127.0.0.1:8001 | Chỉ localhost |
@@ -263,7 +267,7 @@ Sau khi chạy, đọc:
 ```powershell
 . .\security\fetch-lab-tokens.ps1
 $headers = @{ Authorization = "Bearer $env:VALID_TOKEN" }
-Invoke-WebRequest -Uri "http://localhost/api/orders" -Headers $headers -UseBasicParsing
+Invoke-WebRequest -Uri "http://localhost:8888/api/orders" -Headers $headers -UseBasicParsing
 ```
 
 ---
@@ -300,7 +304,8 @@ Checklist: `implementation/08-production-readiness.md`
 ```powershell
 cd core
 powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
-docker compose restart order-service user-service billing-service auth-service
+docker compose -p shopflow-app-a restart order-service user-service
+docker compose -p shopflow-app-b restart billing-service auth-service
 ```
 
 - Runtime services dùng **`VAULT_APP_TOKEN`**, không inject `VAULT_ROOT_TOKEN` vào microservice.
@@ -401,7 +406,6 @@ flowchart TD
   B --> C{Keycloak OIDC 200?}
   C -->|No| W[Đợi / docker logs keycloak]
   W --> C
-  C -->|Yes| D[test-opa-policy]
   C -->|Yes| E[run-incident-drill]
   C -->|Yes| F[run-g3-benchmark]
   C -->|Yes| G[run-security-checks]

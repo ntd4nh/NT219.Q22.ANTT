@@ -42,9 +42,13 @@ export async function verifyWebhookRequest(req, webhookSecret, nonceTtlSec = 300
   const replay = await markOnce(nonceKey(nonce), nonceTtlSec)
   if (replay) return { ok: false, reason: 'NONCE_REPLAY' }
 
-  const raw = Buffer.isBuffer(req.body)
-    ? req.body
-    : (req.rawBody || Buffer.from(JSON.stringify(req.body || {})))
+  // Bắt buộc raw Buffer: JSON.stringify(req.body) không byte-identical với body gốc
+  // (key order, whitespace, unicode escapes có thể khác) → HMAC mismatch hoặc bypass.
+  // Caller phải mount express.raw({ type: '*/*' }) trước middleware này.
+  if (!Buffer.isBuffer(req.body)) {
+    return { ok: false, reason: 'RAW_BODY_REQUIRED' }
+  }
+  const raw = req.body
   const expectedHex = computeWebhookHmac(webhookSecret, raw)
   const provided = sigHeader.replace(/^sha256=/i, '')
   if (!timingSafeEqualHex(provided, expectedHex)) {

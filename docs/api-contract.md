@@ -8,9 +8,11 @@ Layered test matrix: [`security/layered-checks.md`](../security/layered-checks.m
 
 | Environment | Edge | Kong direct |
 |-------------|------|-------------|
-| Local | `http://localhost` | `http://localhost:8000` |
-| TLS | `https://localhost` | — |
+| Local | `http://localhost:8888` | `http://localhost:8000` |
+| TLS | `https://localhost:8444` | — |
 | mTLS webhook | `https://localhost:8443` | — |
+
+> Port 8888/8444 là cổng lab chuẩn (xem `deploy/node-edge/docker-compose.yml`). Scripts `run-security-checks.ps1` và `run-g3-benchmark.ps1` đọc `$env:BASE_URL` — set trước khi chạy: `$env:BASE_URL = "http://localhost:8888"`.
 
 ## Authentication
 
@@ -66,8 +68,9 @@ Headers: `X-Signature` (format `sha256=<hex>`), `X-Timestamp` (unix sec), `X-Non
 ### D4 — SSRF
 
 Body: `{ "url": "<target>" }`
-- Block: `169.254.0.0/16`, `10.0.0.0/8`, `127.0.0.0/8`, `localhost`, `metadata.google.internal` → **403** `SSRF_BLOCKED`.
-- Allowlist lab: `https://cdn.shopflow.local`, `https://imgur.com` (configurable).
+- Block (hostname): `localhost`, `metadata.google.internal` → **403** `SSRF_BLOCKED`.
+- Block (IP dải private sau DNS resolve): `10.0.0.0/8`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16` → **403** `SSRF_BLOCKED`.
+- Allowlist lab: `https://cdn.shopflow.local`, `https://imgur.com` (env `SSRF_ALLOWLIST`, có thể cấu hình).
 
 ### D5 — Vault Transit (Envelope Encryption)
 
@@ -77,7 +80,7 @@ Vault Transit engine + key `shopflow-master` (AES-256-GCM) phải được init 
 ```
 POST /api/billing/vault-encrypt
 Body: { "plaintext": "<string>" }
-Response: { "ciphertext": "vault:v1:...", "algorithm": "aes256-gcm96", "key": "shopflow-master" }
+Response: { "original": "<string>", "ciphertext": "vault:v1:...", "algorithm": "aes256-gcm96", "key": "shopflow-master" }
 ```
 
 **Decrypt:**

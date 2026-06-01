@@ -2,7 +2,8 @@
 param(
   [int]$Requests = 50,
   [int]$Runs = 3,
-  [string]$OutDir = "$PSScriptRoot\..\docs\evidence"
+  [string]$OutDir = "$PSScriptRoot\..\docs\evidence",
+  [string]$BaseUrl = $(if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:8888' })
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -42,8 +43,8 @@ function Measure-Endpoint($name, $uri, $headers) {
 
 $allRows = @()
 for ($run = 1; $run -le $Runs; $run++) {
-  $allRows += (Measure-Endpoint "orders_list_run$run" 'http://localhost/api/orders' @{ Authorization = "Bearer $tenantA" })
-  $allRows += (Measure-Endpoint "orders_bola_run$run" "http://localhost$bolaPath" @{ Authorization = "Bearer $tenantA" })
+  $allRows += (Measure-Endpoint "orders_list_run$run" "$BaseUrl/api/orders" @{ Authorization = "Bearer $tenantA" })
+  $allRows += (Measure-Endpoint "orders_bola_run$run" "$BaseUrl$bolaPath" @{ Authorization = "Bearer $tenantA" })
 }
 
 $ts = Get-Date -Format 'yyyyMMdd-HHmmss'

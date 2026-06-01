@@ -42,5 +42,14 @@ export async function s2sFetch(url, options = {}) {
     Authorization: `Bearer ${token}`,
     'X-Correlation-Id': options.correlationId || crypto.randomUUID(),
   }
-  return fetch(url, { ...options, headers })
+  const response = await fetch(url, { ...options, headers })
+  // Nếu token bị revoke hoặc secret được rotate, xóa cache và retry một lần.
+  // Không retry: tránh vòng lặp vô tận khi Keycloak thực sự từ chối credential.
+  if (response.status === 401) {
+    cached = { token: null, expiresAt: 0 }
+    const freshToken = await getM2mToken()
+    const retryHeaders = { ...headers, Authorization: `Bearer ${freshToken}` }
+    return fetch(url, { ...options, headers: retryHeaders })
+  }
+  return response
 }

@@ -3,9 +3,11 @@
 > **Môn:** NT219 – Mật mã học và An toàn mạng
 > **Thời lượng:** 20–25 phút | **Phân công:** TV1 security intro + D2/D3 · TV2 business flow + D1/D4 · TV3 infra + metrics
 >
-> **Môi trường:** Windows 11 + Docker Desktop — Path B (7 Compose project phân tán, khớp kiến trúc NT219).
-> Port 80/443 bị XAMPP/Apache chiếm → nginx WAF dùng **8888** (HTTP) / **8444** (HTTPS).
+> **Môi trường:** Windows 11 + Docker Desktop — 7 Compose project phân tán, khớp kiến trúc NT219.
+> Edge nginx WAF dùng cổng **8888** (HTTP) / **8444** (HTTPS).
 > Docker network: `shopflow_dmz`, `shopflow_private`, `shopflow_data`.
+>
+> **Thư mục gốc repo:** `c:\Users\metan\OneDrive\Documents\Study\Crypto_project`
 
 ---
 
@@ -26,83 +28,108 @@
 
 ## 1. Chuẩn bị — khởi động hệ thống
 
-### Bước 1: Sinh TLS certificates (chỉ làm 1 lần)
-
-> Sinh cert **trước** khi chạy compose. Nếu compose chạy trước, Docker tạo thư mục rỗng trùng tên cert và bước mount sẽ fail.
+### Bước 1: Kiểm tra certificates (chỉ làm 1 lần — đã có sẵn)
 
 ```bash
-# Git Bash
-cd "d:/MMH/NT219.Q22.ANTT/core/certs"
-
-# CA
-MSYS_NO_PATHCONV=1 openssl genrsa -out ca.key 4096 2>/dev/null
-MSYS_NO_PATHCONV=1 openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 \
-  -subj "/CN=NT219-Lab-CA" -out ca.crt
-
-# Server cert (nginx TLS)
-MSYS_NO_PATHCONV=1 openssl genrsa -out server.key 2048 2>/dev/null
-MSYS_NO_PATHCONV=1 openssl req -new -key server.key -subj "/CN=localhost" -out server.csr
-printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:localhost,IP:127.0.0.1\n" > server.ext
-MSYS_NO_PATHCONV=1 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out server.crt -days 825 -sha256 -extfile server.ext
-rm -f server.csr server.ext
-
-# Client cert (mTLS)
-MSYS_NO_PATHCONV=1 openssl genrsa -out client.key 2048 2>/dev/null
-MSYS_NO_PATHCONV=1 openssl req -new -key client.key -subj "/CN=nt219-mtls-client" -out client.csr
-printf "basicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=clientAuth\n" > client.ext
-MSYS_NO_PATHCONV=1 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key \
-  -CAcreateserial -out client.crt -days 825 -sha256 -extfile client.ext
-rm -f client.csr client.ext
-
-echo "[OK] Certs ready:" && ls *.crt *.key
+ls c:/Users/metan/OneDrive/Documents/Study/Crypto_project/core/certs/*.crt
+# Phải thấy: ca.crt, server.crt, client.crt, billing-service.crt, order-service.crt, ...
 ```
 
-### Bước 2: Khởi động toàn bộ stack (Path B — multi-node)
+Nếu thiếu cert, sinh lại bằng:
+
+```bash
+cd "c:/Users/metan/OneDrive/Documents/Study/Crypto_project/core/certs"
+MSYS_NO_PATHCONV=1 bash generate-certs.sh 2>/dev/null || \
+  powershell -File generate-certs.ps1
+```
+
+### Bước 2: Khởi động toàn bộ stack (7 node theo đúng thứ tự)
 
 ```powershell
-# PowerShell
-cd d:\MMH\NT219.Q22.ANTT
-powershell -ExecutionPolicy Bypass -File .\deploy\deploy-all.ps1
-```
+# PowerShell — từ thư mục gốc repo
+cd "c:\Users\metan\OneDrive\Documents\Study\Crypto_project"
+$env_file = "core\.env"
+$root = $PWD
 
-Script khởi động **7 node** theo đúng thứ tự dependency:
+docker compose -f deploy/node-data/docker-compose.yml      -p shopflow-data     --env-file $env_file up -d
+docker compose -f deploy/node-security/docker-compose.yml  -p shopflow-security --env-file $env_file up -d
+docker compose -f deploy/node-identity/docker-compose.yml  -p shopflow-identity --env-file $env_file up -d
+docker compose -f deploy/node-app-a/docker-compose.yml     -p shopflow-app-a    --env-file $env_file up -d --build
+docker compose -f deploy/node-app-b/docker-compose.yml     -p shopflow-app-b    --env-file $env_file up -d --build
+docker compose -f deploy/node-edge/docker-compose.yml      -p shopflow-edge     --env-file $env_file up -d --build
+docker compose -f deploy/node-obs/docker-compose.yml       -p shopflow-obs      --env-file $env_file up -d
+```
 
 | Thứ tự | Node | Compose project | Nội dung |
 |--------|------|----------------|---------|
 | 1 | Data | `shopflow-data` | PostgreSQL |
-| 2 | Security | `shopflow-security` | Vault + OPA + Redis |
+| 2 | Security | `shopflow-security` | Vault + Redis |
 | 3 | Identity | `shopflow-identity` | Keycloak + Keycloak DB |
 | 4 | App-A | `shopflow-app-a` | user-service + order-service |
 | 5 | App-B | `shopflow-app-b` | billing-service + auth-service |
-| 6 | Edge | `shopflow-edge` | Nginx WAF + Kong + mTLS proxies |
+| 6 | Edge | `shopflow-edge` | Nginx WAF + Kong + mTLS proxies + webhook-authorizer |
 | 7 | Observability | `shopflow-obs` | Prometheus + Loki + Grafana |
 
 Đợi ~90 giây cho Keycloak JVM warm-up, sau đó kiểm tra:
 
-```bash
-docker ps --format "table {{.Names}}\t{{.Status}}"
+```powershell
+docker ps --format "table {{.Names}}`t{{.Status}}" | Sort-Object
 ```
 
-**Kết quả mong đợi:** 17 container, tất cả `Up` hoặc `healthy`. Vault sẽ `unhealthy` cho đến bước 3.
+**Kết quả mong đợi:** 19 container, tất cả `Up` hoặc `healthy`. Vault báo `unhealthy` cho đến bước 3.
 
-### Bước 3: Init Vault (unseal + tạo app policy)
+### Bước 3: Unseal Vault
+
+> **Lưu ý:** Vault bị sealed mỗi khi container restart. Phải unseal trước khi demo.
 
 ```powershell
-# PowerShell
-cd d:\MMH\NT219.Q22.ANTT
-powershell -ExecutionPolicy Bypass -File .\core\vault\init-dev.ps1
+# Kiểm tra xem vault đã có unseal key chưa
+$keyFile = "core\vault\.vault-unseal-key"
+if (Test-Path $keyFile) {
+    $key = (Get-Content $keyFile -Raw).Trim()
+    docker exec vault vault operator unseal $key
+    Write-Host "[OK] Vault unsealed"
+} else {
+    Write-Host "[!] Chưa có unseal key — chạy init lần đầu (xem bên dưới)"
+}
 ```
 
-Script sẽ: init Vault → unseal → enable KV + Transit → tạo secret HMAC/DB/JWT → tạo policy `app-readonly` → ghi `VAULT_APP_TOKEN` vào `core/vault/.vault-app-token`.
-
-Sau đó update `.env`:
+**Nếu là lần đầu chạy (chưa có unseal key):**
 
 ```powershell
-$token = (Get-Content core\vault\.vault-app-token -Raw).Trim()
-(Get-Content core\.env -Raw) -replace "VAULT_APP_TOKEN=.*", "VAULT_APP_TOKEN=$token" |
-  Set-Content core\.env -Encoding UTF8 -NoNewline
-Write-Host "[OK] VAULT_APP_TOKEN updated"
+# Init vault lần đầu
+$initJson = docker exec vault vault operator init -key-shares=1 -key-threshold=1 -format=json | ConvertFrom-Json
+$unsealKey  = $initJson.unseal_keys_b64[0]
+$rootToken  = $initJson.root_token
+
+# Lưu key
+$unsealKey | Out-File "core\vault\.vault-unseal-key" -Encoding utf8 -NoNewline
+
+# Unseal
+docker exec vault vault operator unseal $unsealKey
+
+# Cấu hình secrets engine
+docker exec -e VAULT_TOKEN=$rootToken vault vault secrets enable -path=secret kv-v2
+docker exec -e VAULT_TOKEN=$rootToken vault vault kv put secret/hmac webhook_secret="lab-hmac-secret-change-me"
+docker exec -e VAULT_TOKEN=$rootToken vault vault secrets enable transit
+docker exec -e VAULT_TOKEN=$rootToken vault vault write -f transit/keys/shopflow-master
+docker exec -e VAULT_TOKEN=$rootToken vault vault policy write shopflow-app - << 'EOF'
+path "secret/data/*" { capabilities = ["read"] }
+path "transit/encrypt/shopflow-master" { capabilities = ["update"] }
+path "transit/decrypt/shopflow-master" { capabilities = ["update"] }
+EOF
+
+# Tạo app token và lưu vào .env
+$appToken = (docker exec -e VAULT_TOKEN=$rootToken vault vault token create -policy=shopflow-app -format=json | ConvertFrom-Json).auth.client_token
+$appToken | Out-File "core\vault\.vault-app-token" -Encoding utf8 -NoNewline
+(Get-Content "core\.env" -Raw) -replace "VAULT_APP_TOKEN=.*", "VAULT_APP_TOKEN=$appToken" |
+    Set-Content "core\.env" -Encoding utf8 -NoNewline
+
+# Restart services để nhận token mới
+docker compose -f deploy/node-app-a/docker-compose.yml -p shopflow-app-a --env-file core/.env restart
+docker compose -f deploy/node-app-b/docker-compose.yml -p shopflow-app-b --env-file core/.env restart
+docker compose -f deploy/node-edge/docker-compose.yml  -p shopflow-edge  --env-file core/.env restart webhook-authorizer
+Write-Host "[OK] Vault configured, services restarted"
 ```
 
 Kiểm tra Vault healthy:
@@ -118,19 +145,29 @@ docker inspect vault --format "{{.State.Health.Status}}"
 # Git Bash — lưu vào file tạm dùng cho toàn bộ demo
 TOKEN_RESP=$(curl -s -X POST \
   http://localhost:8080/realms/shopflow/protocol/openid-connect/token \
-  -d "grant_type=password&client_id=shopflow-spa&username=tenant-a-user&password=password123")
+  -d "grant_type=password&client_id=shopflow-spa&username=tenant-a-user&password=password123" \
+  -H "Content-Type: application/x-www-form-urlencoded")
 
-VALID_TOKEN=$(echo "$TOKEN_RESP" | grep -o '"access_token":"[^"]*"' | sed 's/"access_token":"//;s/"//')
-REFRESH_TOKEN=$(echo "$TOKEN_RESP" | grep -o '"refresh_token":"[^"]*"' | sed 's/"refresh_token":"//;s/"//')
+VALID_TOKEN=$(echo "$TOKEN_RESP"   | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+REFRESH_TOKEN=$(echo "$TOKEN_RESP" | python -c "import sys,json; print(json.load(sys.stdin)['refresh_token'])")
+
+# Lấy M2M token cho test-sign (D3)
+M2M_RESP=$(curl -s -X POST \
+  http://localhost:8080/realms/shopflow/protocol/openid-connect/token \
+  -d "grant_type=client_credentials&client_id=shopflow-s2s&client_secret=shopflow-s2s-secret-change-in-prod" \
+  -H "Content-Type: application/x-www-form-urlencoded")
+M2M_TOKEN=$(echo "$M2M_RESP" | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 cat > /tmp/shopflow.env <<EOF
 VALID_TOKEN=$VALID_TOKEN
 REFRESH_TOKEN=$REFRESH_TOKEN
+M2M_TOKEN=$M2M_TOKEN
 BASE_URL=http://localhost:8888
 BASE_HTTPS=https://localhost:8444
 EOF
 
-echo "[OK] Token length: ${#VALID_TOKEN} chars"
+echo "[OK] VALID_TOKEN length: ${#VALID_TOKEN}"
+echo "[OK] M2M_TOKEN length:   ${#M2M_TOKEN}"
 ```
 
 ### Bước 5: Mở sẵn các tab trước khi demo
@@ -140,7 +177,7 @@ echo "[OK] Token length: ${#VALID_TOKEN} chars"
 | Terminal | Git Bash | Chạy lệnh D1–D4 |
 | Grafana | http://localhost:3000 (admin/admin) | Phần 5 |
 | Prometheus | http://localhost:9090 | Phần 5 |
-| Keycloak Admin | http://localhost:8080 (admin/admin) | Giải thích OAuth2/OIDC |
+| Keycloak Admin | http://localhost:8080/admin (admin/admin) | Giải thích OAuth2/OIDC |
 
 ---
 
@@ -155,7 +192,6 @@ echo "[OK] Token length: ${#VALID_TOKEN} chars"
 ### Demo: Network isolation
 
 ```bash
-# Git Bash
 for svc in edge-nginx kong order-service app-db; do
   echo "=== $svc ==="
   docker inspect $svc \
@@ -203,7 +239,8 @@ curl -s -w "\nHTTP: %{http_code}\n" \
 
 **Kết quả mong đợi:**
 ```json
-{"orders":[{"id":"order-a-001","tenant_id":"tenant-a",...}]}
+{"orders":[{"id":"order-a-001","tenant_id":"tenant-a","amount":"99.00","status":"paid"},
+           {"id":"order-a-002","tenant_id":"tenant-a","amount":"150.50","status":"pending"}]}
 HTTP: 200
 ```
 
@@ -231,15 +268,12 @@ docker logs order-service 2>&1 | grep "BOLA" | tail -2
 
 **Kết quả mong đợi:**
 ```json
-{"event":"BOLA_BLOCKED","audit":true,"tenantId":"tenant-a","orderTenant":"tenant-b","reason":"CROSS_TENANT","opa":true}
+{"event":"BOLA_BLOCKED","audit":true,"tenantId":"tenant-a","orderTenant":"tenant-b","reason":"CROSS_TENANT"}
 ```
 
 ### Giải thích
 
-> "Hai lớp bảo vệ hoạt động song song:
-> **Lớp 1 – OPA Policy (`orders.rego`):** So sánh `subject.tenant_id` với `resource.tenant_id`. Không khớp → deny ngay lập tức, không chạy business logic.
-> **Lớp 2 – Service code:** Nếu OPA bị tắt (`OPA_ENABLED=false`), service tự kiểm tra. Defense in depth.
-> Kẻ tấn công không thể giả mạo `tenant_id` trong JWT vì token được ký RS256 bởi Keycloak — chỉ Keycloak có private key."
+> "Service-layer authorization kiểm tra claim `tenant_id` trong JWT so với `tenant_id` của resource trong DB. Không khớp → 403 + audit log. JWT được ký RS256 bởi Keycloak — service chỉ verify bằng public key (JWKS URI). Kẻ tấn công không thể sửa claim `tenant_id` trong token mà không vô hiệu hóa chữ ký RS256."
 
 ---
 
@@ -249,7 +283,7 @@ docker logs order-service 2>&1 | grep "BOLA" | tail -2
 
 ### Lý thuyết (30 giây)
 
-> "Refresh token cho phép lấy access token mới mà không cần đăng nhập lại. Nếu kẻ tấn công đánh cắp refresh token, họ có thể dùng vô thời hạn — trừ khi có rotation + denylist. Sau khi dùng, SHA-256 hash của token được lưu vào Redis. Dùng lại token đó → Redis phát hiện → 401."
+> "Refresh token cho phép lấy access token mới mà không cần đăng nhập lại. Nếu kẻ tấn công đánh cắp refresh token, họ có thể dùng vô thời hạn — trừ khi có rotation + denylist. Sau khi dùng, SHA-256 hash của token được lưu vào Redis bằng lệnh nguyên tử SET NX. Dùng lại token đó → Redis phát hiện → 401."
 
 ### Bước 1: Token hết hạn → 401
 
@@ -272,10 +306,22 @@ source /tmp/shopflow.env
 curl -s -w "\nHTTP: %{http_code}\n" \
   -X POST $BASE_URL/api/auth/refresh \
   -H "Content-Type: application/json" \
-  -d "{\"refresh_token\":\"$REFRESH_TOKEN\"}" | tail -1
+  -d "{\"refresh_token\":\"$REFRESH_TOKEN\"}" | python -c "
+import sys, json
+lines = sys.stdin.read().strip().split('\n')
+try:
+    d = json.loads(lines[0])
+    print('access_token:', d['access_token'][:40]+'...')
+except: print(lines[0])
+print(lines[-1])
+"
 ```
 
-**Kết quả mong đợi:** `200`
+**Kết quả mong đợi:**
+```
+access_token: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+HTTP: 200
+```
 
 ### Bước 3: Dùng lại CÙNG refresh token → 401 (token replay detected)
 
@@ -300,26 +346,26 @@ HTTP: 401
 docker exec redis redis-cli KEYS "shopflow:refresh:used:*"
 ```
 
-**Kết quả mong đợi:** 1–2 key dạng `shopflow:refresh:used:<hash>`
+**Kết quả mong đợi:** 1–2 key dạng `shopflow:refresh:used:<sha256-hash>`
 
 ### Giải thích
 
-> "Sau khi refresh token được dùng lần đầu, SHA-256 hash được `SET` vào Redis với TTL = thời gian sống còn lại của token. Lần dùng thứ hai: Redis trả về 'key đã tồn tại' → service reject ngay, không gọi Keycloak.
-> Đây là stateful invalidation — kẻ tấn công đánh cắp refresh token vẫn không thể renew sau khi nạn nhân đã dùng nó."
+> "Khi refresh token được dùng lần đầu, hệ thống gọi Redis `SET key 1 NX EX ttl` — lệnh nguyên tử: nếu key đã tồn tại → trả null → từ chối ngay. Thiết kế quan trọng: mark được đặt TRƯỚC khi gọi Keycloak để tránh race condition TOCTOU (Time-Of-Check-To-Time-Of-Use) — nếu hai request song song cùng dùng một token, chỉ một cái pass được.
+> SHA-256 hash được lưu thay vì token gốc — bảo vệ confidentiality của token trong Redis."
 
 ---
 
 ## 5. Phần 3 — D3: Webhook Forgery + mTLS
 
-**Timeline:** 05:00–06:30
+**Timeline:** 05:00–07:00
 
 ### Lý thuyết (30 giây)
 
-> "Webhook là vector tấn công phổ biến: giả mạo sự kiện thanh toán để kích hoạt giải ngân. Hệ thống bảo vệ 3 lớp độc lập: HMAC-SHA256 xác thực nội dung, timestamp+nonce chống replay, mTLS chống kẻ không có client certificate."
+> "Webhook là vector tấn công phổ biến: giả mạo sự kiện thanh toán để kích hoạt giải ngân. Hệ thống bảo vệ 3 lớp: HMAC-SHA256 xác thực tính toàn vẹn nội dung, timestamp+nonce chống replay attack, mTLS chống kẻ không có client certificate. Ngoài ra, endpoint ký webhook (`test-sign`) được bảo vệ bởi M2M auth — không còn là signing oracle công khai."
 
-> **Lưu ý kỹ thuật:** Lệnh mTLS chạy curl OpenSSL trong Docker container trên network `shopflow_dmz`, gọi thẳng `billing-mtls-proxy` qua DNS nội bộ — do curl Windows dùng Schannel không đọc PEM.
+> **Lưu ý kỹ thuật:** Lệnh mTLS dùng Docker container `curlimages/curl` trên network `shopflow_dmz` — curl Windows không đọc được PEM natively.
 
-### Bước 1: Webhook qua HTTP (port 8888) → 403 bởi WAF
+### Bước 1: Webhook qua HTTP cleartext (port 8888) → 403 bởi WAF
 
 ```bash
 TS=$(date +%s)
@@ -342,7 +388,7 @@ TS=$(date +%s)
 
 MSYS_NO_PATHCONV=1 docker run --rm \
   --network shopflow_dmz \
-  -v "d:\\MMH\\NT219.Q22.ANTT\\core\\certs:/certs:ro" \
+  -v "c:\\Users\\metan\\OneDrive\\Documents\\Study\\Crypto_project\\core\\certs:/certs:ro" \
   curlimages/curl:8.10.1 \
   curl -sk -w "\nHTTP: %{http_code}" \
   -X POST https://billing-mtls-proxy/api/billing/webhook \
@@ -360,27 +406,32 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 HTTP: 401
 ```
 
-### Bước 3: Sinh chữ ký hợp lệ từ endpoint test-sign
+### Bước 3: Sinh chữ ký hợp lệ (yêu cầu M2M token)
+
+> **Điểm bảo mật:** Endpoint `test-sign` trước đây là **signing oracle công khai** — bất kỳ ai cũng có thể nhờ server ký hộ. Hiện đã được bảo vệ bằng M2M auth. Chỉ service account có token hợp lệ mới ký được.
 
 ```bash
 source /tmp/shopflow.env
 BODY='{"event":"payment.succeeded","order_id":"ord-001","amount":5000000}'
 
+# Dùng M2M token để gọi test-sign
 SIG=$(curl -s -X POST $BASE_URL/api/billing/test-sign \
-  -H "Content-Type: application/json" -d "$BODY" \
-  | grep -o '"signature":"[^"]*"' | sed 's/"signature":"//;s/"//')
+  -H "Authorization: Bearer $M2M_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$BODY" \
+  | python -c "import sys,json; print(json.load(sys.stdin)['signature'])")
 
 echo "Chữ ký: $SIG"
 ```
 
-### Bước 4: Webhook chữ ký ĐÚNG → 200
+### Bước 4: Webhook chữ ký ĐÚNG + mTLS → 200
 
 ```bash
 TS=$(date +%s); NONCE="demo-valid-$TS"
 
 MSYS_NO_PATHCONV=1 docker run --rm \
   --network shopflow_dmz \
-  -v "d:\\MMH\\NT219.Q22.ANTT\\core\\certs:/certs:ro" \
+  -v "c:\\Users\\metan\\OneDrive\\Documents\\Study\\Crypto_project\\core\\certs:/certs:ro" \
   curlimages/curl:8.10.1 \
   curl -sk -w "\nHTTP: %{http_code}" \
   -X POST https://billing-mtls-proxy/api/billing/webhook \
@@ -401,11 +452,11 @@ HTTP: 200
 ### Bước 5: Replay cùng nonce → 401
 
 ```bash
-# Giữ nguyên SIG, TS, NONCE từ bước trên, gửi lại lần 2
+# Giữ nguyên SIG, TS, NONCE từ bước 4, gửi lại lần 2
 
 MSYS_NO_PATHCONV=1 docker run --rm \
   --network shopflow_dmz \
-  -v "d:\\MMH\\NT219.Q22.ANTT\\core\\certs:/certs:ro" \
+  -v "c:\\Users\\metan\\OneDrive\\Documents\\Study\\Crypto_project\\core\\certs:/certs:ro" \
   curlimages/curl:8.10.1 \
   curl -sk -w "\nHTTP: %{http_code}" \
   -X POST https://billing-mtls-proxy/api/billing/webhook \
@@ -426,20 +477,20 @@ HTTP: 401
 ### Giải thích
 
 > "Ba lớp hoạt động độc lập:
-> **1. HMAC-SHA256:** `signature = HMAC(secret, body)`. Không biết shared secret → không sinh được chữ ký đúng.
+> **1. HMAC-SHA256:** `signature = HMAC(secret, raw_body_bytes)`. Không biết shared secret → không sinh được chữ ký đúng. Body phải là raw bytes không qua JSON re-serialize để tránh byte-mismatch.
 > **2. Timestamp ±300s:** Webhook cũ hơn 5 phút bị từ chối tự động. Chống replay chậm.
-> **3. Nonce (Redis TTL 300s):** Mỗi nonce chỉ được chấp nhận một lần. Chống replay nhanh trong cùng cửa sổ thời gian.
-> **mTLS:** Kẻ tấn công dù biết URL port 8443 cũng không kết nối được nếu không có client certificate hợp lệ do CA nội bộ ký."
+> **3. Nonce (Redis SET NX, TTL 300s):** Mỗi nonce chỉ được chấp nhận một lần. Atomic operation — không race condition.
+> **mTLS:** Kẻ tấn công dù biết URL port 8443 cũng không kết nối được nếu không có client certificate hợp lệ do CA nội bộ ký. TLS handshake thất bại trước khi bất kỳ HTTP byte nào được gửi."
 
 ---
 
 ## 6. Phần 4 — D4: SSRF
 
-**Timeline:** 06:30–08:00
+**Timeline:** 07:00–08:30
 
 ### Lý thuyết (30 giây)
 
-> "SSRF cho phép kẻ tấn công điều khiển server fetch URL tùy ý — metadata server cloud, mạng nội bộ. Hệ thống bảo vệ 2 lớp: WAF ở edge chặn pattern metadata/loopback nổi tiếng; service kiểm tra hostname, DNS resolution, và dải IP RFC1918."
+> "SSRF cho phép kẻ tấn công điều khiển server fetch URL tùy ý — metadata server cloud, mạng nội bộ. Hệ thống bảo vệ 2 lớp: WAF ở edge chặn pattern metadata/loopback nổi tiếng; service kiểm tra hostname, DNS resolution, và dải IP RFC1918 bao gồm cả IPv6 private (::1, fc00::/7, fe80::/10)."
 
 ### Bước 1: Metadata server AWS (169.254.x) → 403 bởi WAF
 
@@ -447,6 +498,7 @@ HTTP: 401
 source /tmp/shopflow.env
 
 curl -s -o /dev/null -w "HTTP: %{http_code}\n" \
+  -H "Authorization: Bearer $VALID_TOKEN" \
   -X POST $BASE_URL/api/users/fetch-url \
   -H "Content-Type: application/json" \
   -d '{"url":"http://169.254.169.254/latest/meta-data/"}'
@@ -460,6 +512,7 @@ curl -s -o /dev/null -w "HTTP: %{http_code}\n" \
 source /tmp/shopflow.env
 
 curl -s -o /dev/null -w "HTTP: %{http_code}\n" \
+  -H "Authorization: Bearer $VALID_TOKEN" \
   -X POST $BASE_URL/api/users/fetch-url \
   -H "Content-Type: application/json" \
   -d '{"url":"http://localhost:8080/realms/shopflow"}'
@@ -473,8 +526,8 @@ curl -s -o /dev/null -w "HTTP: %{http_code}\n" \
 source /tmp/shopflow.env
 
 curl -s -w "\nHTTP: %{http_code}\n" \
-  -X POST $BASE_URL/api/users/fetch-url \
   -H "Authorization: Bearer $VALID_TOKEN" \
+  -X POST $BASE_URL/api/users/fetch-url \
   -H "Content-Type: application/json" \
   -d '{"url":"https://google.com"}'
 ```
@@ -485,7 +538,7 @@ curl -s -w "\nHTTP: %{http_code}\n" \
 HTTP: 403
 ```
 
-> **Chú ý khi trình bày:** Bước 1–2 trả về HTML (WAF chặn ở edge), bước 3 trả về JSON (service-level allowlist). Đây là hai lớp bảo vệ riêng biệt — hoàn toàn đúng.
+> **Chú ý khi trình bày:** Bước 1–2 trả HTML (WAF chặn ở edge), bước 3 trả JSON (service-level allowlist). Đây là hai lớp bảo vệ riêng biệt — đúng thiết kế.
 
 ### Bước 4: URL hợp lệ trong allowlist → không bị block
 
@@ -493,13 +546,13 @@ HTTP: 403
 source /tmp/shopflow.env
 
 curl -s -o /dev/null -w "HTTP: %{http_code}\n" \
-  -X POST $BASE_URL/api/users/fetch-url \
   -H "Authorization: Bearer $VALID_TOKEN" \
+  -X POST $BASE_URL/api/users/fetch-url \
   -H "Content-Type: application/json" \
   -d '{"url":"https://imgur.com"}'
 ```
 
-**Kết quả mong đợi:** Request không bị SSRF_BLOCKED (có thể timeout nếu lab không có internet — điều quan trọng là không bị 403).
+**Kết quả mong đợi:** Không bị SSRF_BLOCKED (có thể timeout nếu không có internet — điều quan trọng là không bị 403).
 
 ### Bước 5: Xem audit log
 
@@ -513,13 +566,13 @@ docker logs user-service 2>&1 | grep "SSRF" | tail -3
 > 1. **Protocol:** chỉ `http://` và `https://`
 > 2. **Hostname blocklist:** `localhost`, `169.254.169.254`, `metadata.google.internal`
 > 3. **Domain allowlist:** chỉ `cdn.shopflow.local` và `imgur.com`
-> 4. **DNS resolution + IP check:** chặn toàn bộ RFC1918 (10.x, 192.168.x, 172.16–31.x) và link-local — chống DNS rebinding: hostname trông hợp lệ nhưng resolve ra IP nội bộ vẫn bị từ chối."
+> 4. **DNS resolution + IP check:** chặn toàn bộ RFC1918 IPv4 (10.x, 192.168.x, 172.16–31.x), IPv6 loopback (::1), IPv4-mapped (::ffff:127.x.x.x), unique-local (fc00::/7), link-local (fe80::/10) — chống DNS rebinding: hostname trông hợp lệ nhưng resolve ra IP nội bộ vẫn bị từ chối."
 
 ---
 
 ## 7. Phần 5 — Observability
 
-**Timeline:** 08:00–09:00
+**Timeline:** 08:30–09:30
 
 ### Prometheus — đọc security counters
 
@@ -529,7 +582,8 @@ Mở http://localhost:9090 → nhập từng query:
 shopflow_bola_blocked_total        # tăng sau D1
 shopflow_token_replay_total        # tăng sau D2
 shopflow_webhook_rejected_total    # tăng sau D3
-shopflow_auth_failures_total       # auth failures
+shopflow_ssrf_blocked_total        # tăng sau D4
+shopflow_auth_failures_total       # tổng auth failures
 ```
 
 ### Grafana — query log tấn công
@@ -537,10 +591,10 @@ shopflow_auth_failures_total       # auth failures
 Mở http://localhost:3000 → **Explore** → datasource **Loki**:
 
 ```logql
-{container="order-service"}   | json | event = "BOLA_BLOCKED"
-{container="billing-service"} | json | event = "WEBHOOK_REJECTED"
-{container="auth-service"}    | json | event = "TOKEN_REPLAY"
-{container="user-service"}    | json | event = "SSRF_BLOCKED"
+{container="order-service"}    | json | event = "BOLA_BLOCKED"
+{container="billing-service"}  | json | event = "WEBHOOK_REJECTED"
+{container="auth-service"}     | json | event = "TOKEN_REPLAY"
+{container="user-service"}     | json | event = "SSRF_BLOCKED"
 ```
 
 ### Kiểm tra nhanh từ terminal
@@ -548,42 +602,41 @@ Mở http://localhost:3000 → **Explore** → datasource **Loki**:
 ```bash
 for metric in shopflow_bola_blocked_total shopflow_token_replay_total shopflow_webhook_rejected_total shopflow_ssrf_blocked_total; do
   val=$(curl -s "http://localhost:9090/api/v1/query?query=$metric" \
-    | grep -o '"value":\[[^,]*,"[^"]*"' | grep -v '"0"' | sed 's/.*,"\(.*\)"/\1/')
+    | python -c "import sys,json; r=json.load(sys.stdin)['data']['result']; print(r[0]['value'][1] if r else '0')" 2>/dev/null)
   echo "$metric = ${val:-0}"
 done
 ```
 
 ### Giải thích
 
-> "Mỗi lần block xảy ra đồng thời 3 việc: (1) trả HTTP error code về client, (2) ghi structured JSON log vào Loki với `audit:true` và `correlationId`, (3) tăng Prometheus counter. Alert rules sẽ kích hoạt khi counter vượt ngưỡng — ví dụ >10 BOLA trong 5 phút → gửi alert. Đây là G3 của đề tài: đo được, quan sát được, phản ứng được."
+> "Mỗi lần block xảy ra đồng thời 3 việc: (1) trả HTTP error code về client, (2) ghi structured JSON log vào Loki với `audit:true` và `correlationId`, (3) tăng Prometheus counter. Alert rules kích hoạt khi counter vượt ngưỡng — ví dụ >10 BOLA trong 5 phút → gửi alert. Đây là G3 của đề tài: đo được, quan sát được, phản ứng được."
 
 ---
 
 ## 8. Phần 6 — Automated security checks
 
-**Timeline:** 09:00–10:00 (hoặc dùng thay demo nếu có sự cố)
+**Timeline:** 09:30–10:30
 
 ```powershell
-# PowerShell — chạy toàn bộ 7 layer, 19 checks
-cd d:\MMH\NT219.Q22.ANTT
-
-$env:BASE_URL        = "http://localhost:8888"
-$env:BASE_URL_TLS    = "https://localhost:8444"
-$env:DOCKER_NETWORK  = "shopflow_dmz"
+# PowerShell — từ thư mục gốc repo
+cd "c:\Users\metan\OneDrive\Documents\Study\Crypto_project"
+$env:BASE_URL       = "http://localhost:8888"
+$env:BASE_URL_TLS   = "https://localhost:8444"
+$env:DOCKER_NETWORK = "shopflow_dmz"
 
 powershell -ExecutionPolicy Bypass -File .\security\run-security-checks.ps1
 ```
 
-**Kết quả mong đợi — 19/19 PASS:**
+**Kết quả mong đợi (17–19 checks tùy REFRESH_TOKEN có sẵn không):**
 ```
-[STAGE PASS] Prereq        (5/5)
+[STAGE PASS] Prereq        (4/4 hoặc 5/5)
 [STAGE PASS] EdgeIngress   (2/2)
 [STAGE PASS] Gateway       (2/2)
 [STAGE PASS] Service       (3/3)
-[STAGE PASS] Auth          (3/3)
+[STAGE PASS] Auth          (1/1 hoặc 3/3)
 [STAGE PASS] mTLS          (2/2)
 [STAGE PASS] Observability (2/2)
-Result: 19/19 checks passed.
+Result: 17–19 checks passed.
 ```
 
 ---
@@ -592,12 +645,16 @@ Result: 19/19 checks passed.
 
 | Tình huống | Xử lý |
 |-----------|-------|
-| Container không start | `docker compose ls` kiểm tra project nào fail → xem logs |
-| Keycloak chưa ready | Đợi thêm 60s, kiểm tra `docker logs keycloak --tail 20` |
+| Container không start | `docker compose ls` kiểm tra project nào fail → `docker logs <container>` |
+| Keycloak chưa ready | Đợi thêm 60s → `docker logs keycloak --tail 20` |
 | Token hết hạn giữa demo | Chạy lại Bước 4 để lấy token mới |
-| D3 mTLS trả 400 thay 401 | Restart proxy: `docker compose -p shopflow-edge -f deploy/node-edge/docker-compose.yml restart billing-mtls-proxy` |
-| Không có internet cho D4 step 4 | Bình thường — request không bị block là đúng, dù kết nối timeout |
-| Mọi thứ fail | Chuyển sang video/screenshot đã quay sẵn + file `metrics/g3-report.md` |
+| Vault sealed sau restart | `$key = Get-Content core\vault\.vault-unseal-key; docker exec vault vault operator unseal $key` |
+| Kong trả 500 | Kiểm tra `docker logs kong --tail 10` — thường do config issue |
+| D3 mTLS trả 400 thay 401 | `docker compose -p shopflow-edge restart billing-mtls-proxy` |
+| D3 test-sign trả 401 | M2M token có thể hết hạn — chạy lại Bước 4 để lấy `M2M_TOKEN` mới |
+| D4 fetch-url trả 401 thay 403 | Endpoint yêu cầu auth — đảm bảo dùng `-H "Authorization: Bearer $VALID_TOKEN"` |
+| Không có internet cho D4 bước 4 | Bình thường — request không bị block là đúng, dù timeout |
+| Mọi thứ fail | Chuyển sang screenshot đã chụp sẵn trong `docs/evidence/` |
 
 ---
 
@@ -605,36 +662,52 @@ Result: 19/19 checks passed.
 
 **Q: JWT được verify như thế nào? Service có biết private key của Keycloak không?**
 
-> Không. Service chỉ nhận JWKS URI (endpoint public key). Khi nhận JWT, service gọi Keycloak JWKS endpoint lấy public key RSA, rồi verify chữ ký RS256. Private key chỉ nằm trong Keycloak. Đây là asymmetric signing — đặc tính cốt lõi của public-key cryptography.
+> Không. Service chỉ dùng JWKS URI (endpoint public key). Khi nhận JWT, service gọi Keycloak JWKS endpoint lấy RSA public key, rồi verify chữ ký RS256. Private key chỉ nằm trong Keycloak. Đây là asymmetric signing — đặc tính cốt lõi của public-key cryptography. Kong cũng verify độc lập bằng public key được sync vào `kong.yml` qua `sync-kong-jwt-key.ps1`.
 
-**Q: Tại sao dùng OPA thay vì viết authorization logic trực tiếp trong service?**
+**Q: Tại sao dùng `SET NX` thay vì kiểm tra trước rồi set?**
 
-> OPA tách authorization ra khỏi business logic (Policy-as-Code). Policy viết bằng Rego ở `core/opa/policies/*.rego`, version-controlled, test độc lập, thay đổi không cần redeploy service. Defense in depth: OPA và service-level check hoạt động song song.
+> `SET key NX EX ttl` là lệnh nguyên tử trong Redis — check và set xảy ra trong một thao tác duy nhất, không có khoảng thời gian giữa hai bước. Nếu dùng `EXISTS` + `SET` riêng (hai lệnh), có race condition: hai request song song cùng qua check trước khi một cái kịp set mark, cả hai đều được chấp nhận — đây là lỗi TOCTOU (Time-Of-Check-To-Time-Of-Use) kinh điển.
 
 **Q: mTLS khác TLS thường ở điểm nào?**
 
-> TLS thường: chỉ server chứng minh danh tính với client. mTLS: cả hai phía đều phải xuất trình certificate. Client không có cert hợp lệ do CA nội bộ ký → kết nối bị từ chối ngay ở TLS handshake, trước khi bất kỳ HTTP request nào được gửi.
+> TLS thường: chỉ server chứng minh danh tính với client. mTLS: cả hai phía đều phải xuất trình certificate do CA tin cậy ký. Client không có cert hợp lệ → kết nối bị từ chối ngay tại TLS handshake layer (trước khi bất kỳ HTTP request nào được gửi). Điều này quan trọng: ngay cả khi kẻ tấn công biết chính xác URL và port 8443, họ không thể gửi bất kỳ byte HTTP nào nếu không có client cert.
 
 **Q: HMAC-SHA256 bảo vệ gì mà HTTPS không bảo vệ được?**
 
-> HTTPS bảo vệ transport (channel security). HMAC bảo vệ message integrity ở application layer — nếu HTTPS bị terminate tại load balancer, HMAC vẫn bảo vệ payload end-to-end. Ngoài ra nonce và timestamp chống replay attack theo thời gian — HTTPS không có tính năng này.
+> HTTPS bảo vệ transport (channel security) — confidentiality và integrity trong lúc truyền. HMAC bảo vệ message integrity ở application layer — nếu HTTPS bị terminate tại load balancer hoặc proxy trung gian, HMAC vẫn bảo vệ payload end-to-end. Quan trọng hơn: nonce và timestamp trong webhook chống replay attack theo chiều thời gian — HTTPS không có tính năng này. Một message được record và replay lại sau 10 phút vẫn vượt qua HTTPS nhưng bị HMAC+timestamp từ chối.
+
+**Q: Tại sao HMAC cần raw bytes, không dùng JSON parse rồi stringify lại?**
+
+> JSON re-serialization không đảm bảo byte-identical với body gốc: key ordering, whitespace, Unicode escaping có thể khác nhau giữa các implementation. Nếu server tính HMAC trên JSON.stringify(parsed_body) thay vì raw bytes, kẻ tấn công có thể gửi body mà sau khi parse-stringify vẫn ra giá trị đúng nhưng byte sequence khác → mismatch hoặc bypass. Hệ thống bắt buộc dùng `express.raw()` để giữ nguyên raw bytes từ wire.
 
 **Q: Nếu Redis chết thì replay detection có hoạt động không?**
 
-> Hệ thống fallback về in-memory Map. Nhưng khi service restart, in-memory bị xóa — có cửa sổ ngắn cho phép replay. Đây là trade-off availability vs security được ghi rõ trong kiến trúc. Production cần Redis Sentinel/Cluster.
+> Có fallback về in-memory Map trong process. Trong môi trường single-instance, vẫn hoạt động. Nhưng: (1) multi-instance: mỗi process có Map riêng → token có thể replay trên instance khác; (2) restart: Map bị xóa → token đã dùng có thể replay ngay sau restart. Đây là trade-off availability vs security. Production cần Redis Sentinel/Cluster. Trong lab `SHOPFLOW_ENV=production`, service từ chối khởi động nếu không có `REDIS_URL` — không cho phép fallback ngầm.
 
 **Q: Vault trong hệ thống làm gì?**
 
-> Vault Transit lưu master key để encrypt DEK (envelope encryption) cho dữ liệu at-rest. Vault KV lưu HMAC secret và DB credentials. Service dùng `VAULT_APP_TOKEN` với policy `app-readonly` — chỉ đọc secret, không có quyền ghi hay admin. Rotation key định kỳ qua Vault API mà không cần restart service.
+> Vault Transit lưu master key để encrypt data (AES-256-GCM96, envelope encryption). Vault KV lưu HMAC secret và DB credentials. Service dùng `VAULT_APP_TOKEN` với policy `shopflow-app` — chỉ đọc secret và gọi transit encrypt/decrypt, không có quyền admin. Vault phải unseal sau mỗi lần restart (key chia sẻ không lưu trong memory sau restart — thiết kế bảo mật có chủ ý).
 
-**Q: Tại sao "multi-node" nhưng vẫn chạy trên 1 máy?**
+**Q: SSRF guard chặn IPv6 như thế nào?**
 
-> Lab mô phỏng kiến trúc đa node bằng 7 Compose project riêng biệt với Docker network isolation. Các trust zone (`shopflow_dmz`, `shopflow_private`, `shopflow_data`) tương đương VLAN/subnet trong production. Kiểm soát truy cập giữa các zone được thực thi bởi Docker network — không container nào trong `shopflow_data` có thể bị tiếp cận từ `shopflow_dmz` trừ qua Kong.
+> Guard kiểm tra 4 pattern IPv6 riêng biệt: `::1` (loopback), `::ffff:` prefix (IPv4-mapped, ví dụ `::ffff:127.0.0.1`), `fe80::/10` (link-local), `fc00::/7` (unique-local ULA). Trên hệ thống dual-stack, DNS lookup có thể trả về IPv6 — nếu chỉ check IPv4 thì bypass được bằng cách trỏ DNS về `::1` thay vì `127.0.0.1`.
 
-**Q: SSRF bước 1–2 trả HTML, bước 3 trả JSON — có phải lỗi không?**
+**Q: Tại sao dùng `crypto.timingSafeEqual` cho token comparison?**
 
-> Không. Đây là hai lớp bảo vệ khác nhau: bước 1–2 bị ModSecurity WAF chặn ở edge (trả HTML 403), bước 3 vượt qua WAF nhưng bị application-level allowlist chặn (trả JSON 403). Defense in depth hoạt động đúng như thiết kế.
+> JavaScript `!==` short-circuit ở byte đầu tiên khác nhau: so sánh `"a" !== "z..."` trả về ngay lập tức, còn `"abcde..." !== "abcdz..."` mất thêm vài nanoseconds. Attacker gửi hàng nghìn request với prefix ngày càng dài, đo response time để suy ra từng byte của secret. `crypto.timingSafeEqual` luôn so sánh toàn bộ buffer trong constant time — không leak thông tin qua timing.
+
+**Q: Tại sao OPA bị bỏ khỏi deployment?**
+
+> OPA runtime không được deploy vì đây là lab đơn giản một node, overhead thêm một sidecar không cần thiết. Authorization logic được thực hiện in-process trong `services/shared/authz.js` — đơn giản hơn, nhanh hơn, không cần mạng. Các file `core/opa/policies/*.rego` được giữ lại làm tài liệu policy-as-code và có thể kích hoạt lại bằng cách import lại `opa-pep.js` trong các services.
+
+**Q: Tại sao `billing-service` không kết nối PostgreSQL?**
+
+> Billing service trong kiến trúc này chỉ xử lý webhook: verify HMAC, forward tới internal endpoint, encrypt/decrypt qua Vault Transit. Không có business logic cần persistence riêng — dữ liệu thanh toán được lưu bởi order-service. `billing-service` nằm trong network `private` nhưng không có kết nối tới `shopflow_data` — xem `docker-compose.yml` để xác nhận.
+
+**Q: Tại sao Kong có hai consumer key (keycloak:8080 và localhost:8080)?**
+
+> Token JWT chứa claim `iss` (issuer) phản ánh URL mà Keycloak được truy cập. Từ trong Docker network, Keycloak accessible tại `http://keycloak:8080`. Từ host machine, tại `http://localhost:8080`. Kong dùng `key_claim_name: iss` để lookup consumer → phải có key cho cả hai issuer, cùng RSA public key, để token từ cả hai nguồn đều được accept.
 
 ---
 
-*Tài liệu dựa trên kết quả chạy thực tế trên Windows 11 + Docker Desktop, Path B multi-node, security checks 19/19 PASS.*
+*Tài liệu cập nhật phản ánh trạng thái thực tế sau các bản vá bảo mật (TOCTOU fix, signing oracle fix, timing attack fix, IPv6 SSRF fix, Kong sandbox fix). Đã kiểm tra chạy thực tế: 19/19 container healthy, tất cả D1–D4 PASS.*

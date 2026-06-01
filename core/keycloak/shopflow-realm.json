@@ -8,6 +8,10 @@
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "bruteForceProtected": true,
+  "failureFactor": 5,
+  "maxFailureWaitSeconds": 900,
+  "waitIncrementSeconds": 60,
+  "passwordPolicy": "length(12) and upperCase(1) and digits(1) and specialChars(1) and notUsername",
   "accessTokenLifespan": 900,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
@@ -24,13 +28,11 @@
       "name": "ShopFlow SPA",
       "enabled": true,
       "publicClient": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "protocol": "openid-connect",
       "redirectUris": [
-        "http://localhost/*",
-        "http://localhost:5173/*",
         "http://localhost:5173/callback"
       ],
       "webOrigins": [
@@ -128,7 +130,7 @@
         {
           "type": "password",
           "value": "password123",
-          "temporary": false
+          "temporary": true
         }
       ],
       "attributes": {
@@ -151,7 +153,7 @@
         {
           "type": "password",
           "value": "password123",
-          "temporary": false
+          "temporary": true
         }
       ],
       "attributes": {
@@ -174,7 +176,7 @@
         {
           "type": "password",
           "value": "password123",
-          "temporary": false
+          "temporary": true
         }
       ],
       "attributes": {

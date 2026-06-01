@@ -1,3 +1,5 @@
+// NOT ACTIVE — OPA runtime removed from deployment. AuthZ handled in-process via services/shared/authz.js.
+// This file is retained for reference only; no service imports it.
 const OPA_URL = process.env.OPA_URL || 'http://opa:8181'
 const OPA_ENABLED = process.env.OPA_ENABLED !== 'false'
 

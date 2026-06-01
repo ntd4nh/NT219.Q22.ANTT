@@ -26,6 +26,11 @@ function warnMemoryFallback() {
 export async function getRedisClient() {
   const url = process.env.REDIS_URL
   if (!url) {
+    // Trong production: REDIS_URL là bắt buộc — in-memory Map không an toàn cho multi-instance.
+    // Replay protection hoàn toàn mất tác dụng nếu nhiều instance chạy song song.
+    if (process.env.SHOPFLOW_ENV === 'production') {
+      throw new Error('REDIS_URL is required in production — in-memory fallback disabled')
+    }
     warnMemoryFallback()
     return null
   }
@@ -84,8 +89,9 @@ export async function markUsed(key, ttlSeconds) {
 export async function incrementWindow(key, windowSeconds, limit) {
   const client = await getRedisClient()
   if (client) {
-    const count = await client.incr(key)
-    if (count === 1) await client.expire(key, windowSeconds)
+    // Pipeline atomic: nếu INCR thành công mà EXPIRE chưa chạy (crash), key sẽ không expire.
+    // Multi/exec đảm bảo cả hai lệnh gửi trong một round trip và được thực thi liên tiếp.
+    const [count] = await client.multi().incr(key).expire(key, windowSeconds).exec()
     return { count, limited: count > limit }
   }
 

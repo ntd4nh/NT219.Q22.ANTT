@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import express from 'express'
 import {
   createLogger,
@@ -27,6 +28,10 @@ const internalToken =
 
 let webhookSecret = null
 
+// Khai báo m2mAuth TRƯỚC tất cả routes để tránh Temporal Dead Zone (TDZ).
+// const không hoisted — dùng trước khi khai báo → ReferenceError khi module load.
+const m2mAuth = requireM2mAuth({ log })
+
 app.use(express.json())
 app.use(correlationMiddleware())
 app.use(metricsMiddleware('billing-service'))
@@ -45,14 +50,25 @@ app.get('/health', async (_req, res) => {
   }
 })
 
-app.post('/api/billing/test-sign', (req, res) => {
+// Chỉ available trong môi trường non-production và yêu cầu M2M auth.
+// Không có auth → signing oracle: attacker dùng endpoint này để forge bất kỳ webhook nào.
+app.post('/api/billing/test-sign', (req, res, next) => {
+  if (isProductionEnv()) return res.status(404).json({ error: 'NOT_FOUND' })
+  next()
+}, m2mAuth, (req, res) => {
   const body = JSON.stringify(req.body || { event: 'payment.succeeded', id: 'evt-test' })
   const signature = `sha256=${computeWebhookHmac(webhookSecret, Buffer.from(body))}`
   res.json({ signature, body: JSON.parse(body) })
 })
 
 app.post('/api/internal/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
-  if (req.headers['x-webhook-internal-token'] !== internalToken) {
+  // timingSafeEqual tránh timing oracle: !== short-circuit để lộ prefix của secret.
+  const provided = req.headers['x-webhook-internal-token'] || ''
+  const expected = internalToken
+  const tokensMatch =
+    provided.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+  if (!tokensMatch) {
     return res.status(403).json({ error: 'FORBIDDEN', reason: 'INVALID_INTERNAL_TOKEN' })
   }
   let eventName = null
@@ -70,7 +86,8 @@ app.post('/api/internal/billing/webhook', express.raw({ type: '*/*', limit: '1mb
 
 app.get('/api/billing', (_req, res) => res.json({ service: 'billing' }))
 
-app.post('/api/billing/vault-encrypt', async (req, res) => {
+// Yêu cầu M2M auth: không có auth → encrypt/decrypt oracle toàn bộ key shopflow-master.
+app.post('/api/billing/vault-encrypt', m2mAuth, async (req, res) => {
   const { plaintext } = req.body || {}
   if (!plaintext) return res.status(400).json({ error: 'BAD_REQUEST', message: 'plaintext required' })
   try {
@@ -79,18 +96,14 @@ app.post('/api/billing/vault-encrypt', async (req, res) => {
       return res.status(503).json({ error: 'VAULT_UNAVAILABLE', message: 'Vault not configured' })
     }
     log('vault_encrypt', { correlationId: req.correlationId })
-    res.json({
-      original: String(plaintext),
-      ciphertext,
-      key: 'shopflow-master',
-      algorithm: 'aes256-gcm96',
-    })
+    // Không trả về plaintext gốc và tên key để tránh information leakage.
+    res.json({ ciphertext })
   } catch (e) {
     res.status(503).json({ error: 'VAULT_ERROR', message: e.message })
   }
 })
 
-app.post('/api/billing/vault-decrypt', async (req, res) => {
+app.post('/api/billing/vault-decrypt', m2mAuth, async (req, res) => {
   const { ciphertext } = req.body || {}
   if (!ciphertext) return res.status(400).json({ error: 'BAD_REQUEST', message: 'ciphertext required' })
   try {
@@ -103,7 +116,6 @@ app.post('/api/billing/vault-decrypt', async (req, res) => {
   }
 })
 
-const m2mAuth = requireM2mAuth({ log })
 app.get('/api/internal/billing/status', m2mAuth, async (_req, res) => {
   res.json({ service: 'billing', vault_required: process.env.VAULT_REQUIRED === 'true' })
 })
