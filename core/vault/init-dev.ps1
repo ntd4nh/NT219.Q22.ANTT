@@ -132,9 +132,20 @@ try {
   }
   $appToken = $tokenResp.auth.client_token
   if (-not $appToken) { throw "Khong nhan duoc app token tu Vault." }
-  Set-Content -Path $AppTokenFile -Value $appToken -Encoding UTF8 -NoNewline
+  # Ghi không BOM (PowerShell 5.1 Set-Content UTF8 thêm BOM gây lỗi env parse)
+  [System.IO.File]::WriteAllText($AppTokenFile, $appToken, [System.Text.Encoding]::UTF8)
   Write-Host "[OK] app token (app-readonly) -> $AppTokenFile"
-  Write-Host "[INFO] Dat VAULT_APP_TOKEN trong core/.env (khong dung root token cho service runtime)."
+
+  # Tự động cập nhật VAULT_APP_TOKEN trong core/.env
+  $envFile = Join-Path $PSScriptRoot ".." ".env"
+  if (Test-Path $envFile) {
+    $envContent = [System.IO.File]::ReadAllText($envFile, [System.Text.Encoding]::UTF8)
+    $envContent = $envContent -replace "(?m)^VAULT_APP_TOKEN=.*", "VAULT_APP_TOKEN=$appToken"
+    [System.IO.File]::WriteAllText($envFile, $envContent, [System.Text.Encoding]::UTF8)
+    Write-Host "[OK] Da cap nhat VAULT_APP_TOKEN trong core/.env"
+  } else {
+    Write-Host "[WARN] Khong tim thay core/.env — dat tay: VAULT_APP_TOKEN=$appToken"
+  }
 } catch {
   Write-Host "[FAIL] app token: $($_.Exception.Message)"
 }

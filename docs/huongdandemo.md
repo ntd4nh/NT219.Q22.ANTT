@@ -8,6 +8,7 @@
 > Docker network: `shopflow_dmz`, `shopflow_private`, `shopflow_data`.
 >
 > **Thư mục gốc repo:** `c:\Users\metan\OneDrive\Documents\Study\Crypto_project`
+> **File này:** `docs/huongdandemo.md`
 
 ---
 
@@ -81,56 +82,37 @@ docker ps --format "table {{.Names}}`t{{.Status}}" | Sort-Object
 ### Bước 3: Unseal Vault
 
 > **Lưu ý:** Vault bị sealed mỗi khi container restart. Phải unseal trước khi demo.
+> Source of truth là `core\vault\.vault-init.json` — file này lưu cả unseal key lẫn root token từ lần init đầu tiên.
 
 ```powershell
-# Kiểm tra xem vault đã có unseal key chưa
-$keyFile = "core\vault\.vault-unseal-key"
-if (Test-Path $keyFile) {
-    $key = (Get-Content $keyFile -Raw).Trim()
+# Kiểm tra và unseal từ .vault-init.json
+$initFile = "core\vault\.vault-init.json"
+if (Test-Path $initFile) {
+    $initData = Get-Content $initFile -Raw | ConvertFrom-Json
+    $key = $initData.unseal_keys_b64[0]
     docker exec vault vault operator unseal $key
     Write-Host "[OK] Vault unsealed"
 } else {
-    Write-Host "[!] Chưa có unseal key — chạy init lần đầu (xem bên dưới)"
+    Write-Host "[!] Chưa có .vault-init.json — chạy init lần đầu (xem bên dưới)"
 }
 ```
 
-**Nếu là lần đầu chạy (chưa có unseal key):**
+**Nếu là lần đầu chạy (chưa có `.vault-init.json`):**
 
 ```powershell
-# Init vault lần đầu
-$initJson = docker exec vault vault operator init -key-shares=1 -key-threshold=1 -format=json | ConvertFrom-Json
-$unsealKey  = $initJson.unseal_keys_b64[0]
-$rootToken  = $initJson.root_token
+# Một lệnh duy nhất — tự động init, unseal, cấu hình secrets engine và cập nhật core/.env
+cd core
+powershell -ExecutionPolicy Bypass -File .\vault\init-dev.ps1
 
-# Lưu key
-$unsealKey | Out-File "core\vault\.vault-unseal-key" -Encoding utf8 -NoNewline
-
-# Unseal
-docker exec vault vault operator unseal $unsealKey
-
-# Cấu hình secrets engine
-docker exec -e VAULT_TOKEN=$rootToken vault vault secrets enable -path=secret kv-v2
-docker exec -e VAULT_TOKEN=$rootToken vault vault kv put secret/hmac webhook_secret="lab-hmac-secret-change-me"
-docker exec -e VAULT_TOKEN=$rootToken vault vault secrets enable transit
-docker exec -e VAULT_TOKEN=$rootToken vault vault write -f transit/keys/shopflow-master
-docker exec -e VAULT_TOKEN=$rootToken vault vault policy write shopflow-app - << 'EOF'
-path "secret/data/*" { capabilities = ["read"] }
-path "transit/encrypt/shopflow-master" { capabilities = ["update"] }
-path "transit/decrypt/shopflow-master" { capabilities = ["update"] }
-EOF
-
-# Tạo app token và lưu vào .env
-$appToken = (docker exec -e VAULT_TOKEN=$rootToken vault vault token create -policy=shopflow-app -format=json | ConvertFrom-Json).auth.client_token
-$appToken | Out-File "core\vault\.vault-app-token" -Encoding utf8 -NoNewline
-(Get-Content "core\.env" -Raw) -replace "VAULT_APP_TOKEN=.*", "VAULT_APP_TOKEN=$appToken" |
-    Set-Content "core\.env" -Encoding utf8 -NoNewline
-
-# Restart services để nhận token mới
-docker compose -f deploy/node-app-a/docker-compose.yml -p shopflow-app-a --env-file core/.env restart
-docker compose -f deploy/node-app-b/docker-compose.yml -p shopflow-app-b --env-file core/.env restart
+# Dùng up -d (KHÔNG dùng restart) để services đọc lại VAULT_APP_TOKEN từ .env
+cd ..
+docker compose -f deploy/node-app-a/docker-compose.yml -p shopflow-app-a --env-file core/.env up -d
+docker compose -f deploy/node-app-b/docker-compose.yml -p shopflow-app-b --env-file core/.env up -d
 docker compose -f deploy/node-edge/docker-compose.yml  -p shopflow-edge  --env-file core/.env restart webhook-authorizer
-Write-Host "[OK] Vault configured, services restarted"
+Write-Host "[OK] Vault configured, services updated"
 ```
+
+> ⚠️ **Quan trọng:** Sau khi init vault, luôn dùng `up -d` (không phải `restart`) để services nhận env var mới. Lệnh `restart` giữ nguyên env cũ từ lúc container được tạo.
 
 Kiểm tra Vault healthy:
 
@@ -648,8 +630,10 @@ Result: 17–19 checks passed.
 | Container không start | `docker compose ls` kiểm tra project nào fail → `docker logs <container>` |
 | Keycloak chưa ready | Đợi thêm 60s → `docker logs keycloak --tail 20` |
 | Token hết hạn giữa demo | Chạy lại Bước 4 để lấy token mới |
-| Vault sealed sau restart | `$key = Get-Content core\vault\.vault-unseal-key; docker exec vault vault operator unseal $key` |
-| Kong trả 500 | Kiểm tra `docker logs kong --tail 10` — thường do config issue |
+| Vault sealed sau restart | `$d = Get-Content core\vault\.vault-init.json \| ConvertFrom-Json; docker exec vault vault operator unseal $d.unseal_keys_b64[0]` |
+| Vault volume bị corrupt / key không khớp | Xóa volume và init lại: `docker compose -f deploy/node-security/docker-compose.yml -p shopflow-security rm -f -s vault`, `docker volume rm shopflow-security_vault-data`, rồi `up -d vault` và chạy lại `init-dev.ps1` |
+| Kong trả 500 với `cjson.safe` | Bug đã được fix trong `core/kong/kong.yml` — restart Kong: `docker compose -p shopflow-edge restart kong` |
+| VAULT_APP_TOKEN trống sau init | Dùng `up -d` thay `restart` để services đọc lại env; kiểm tra bằng `docker exec billing-service env \| grep VAULT_TOKEN` |
 | D3 mTLS trả 400 thay 401 | `docker compose -p shopflow-edge restart billing-mtls-proxy` |
 | D3 test-sign trả 401 | M2M token có thể hết hạn — chạy lại Bước 4 để lấy `M2M_TOKEN` mới |
 | D4 fetch-url trả 401 thay 403 | Endpoint yêu cầu auth — đảm bảo dùng `-H "Authorization: Bearer $VALID_TOKEN"` |
@@ -710,4 +694,4 @@ Result: 17–19 checks passed.
 
 ---
 
-*Tài liệu cập nhật phản ánh trạng thái thực tế sau các bản vá bảo mật (TOCTOU fix, signing oracle fix, timing attack fix, IPv6 SSRF fix, Kong sandbox fix). Đã kiểm tra chạy thực tế: 19/19 container healthy, tất cả D1–D4 PASS.*
+*Cập nhật 2026-06-01: Vault init dùng `init-dev.ps1` (tự động cập nhật `.env`, không BOM); Kong pre-function dùng Lua string pattern thay `require("cjson.safe")` (tương thích sandbox Kong 3.x); services apply env mới bằng `up -d` thay `restart`. Đã kiểm tra chạy thực tế: 19/19 container healthy, tất cả D1–D5 PASS.*

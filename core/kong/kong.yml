@@ -188,16 +188,14 @@ services:
                   payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
                   local json = ngx.decode_base64(payload_b64)
                   if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
-                  local cjson = require("cjson.safe")
-                  local payload = cjson.decode(json)
-                  if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
-                  local aud = payload.aud
-                  if type(aud) == "table" then
+                  local arr = json:match('"aud"%s*:%s*%[([^%]]*)%]')
+                  if arr then
                     local ok = false
-                    for _, v in ipairs(aud) do if v == expected then ok = true break end end
+                    for v in arr:gmatch('"([^"]+)"') do if v == expected then ok = true end end
                     if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
-                  elseif aud ~= expected then
-                    return kong.response.exit(401, { message = "Invalid audience" })
+                  else
+                    local str = json:match('"aud"%s*:%s*"([^"]+)"')
+                    if str ~= expected then return kong.response.exit(401, { message = "Invalid audience" }) end
                   end
       - name: billing-vault-demo-route
         paths: ["/api/billing/vault-encrypt", "/api/billing/vault-decrypt", "/api/billing/test-sign"]
@@ -224,16 +222,14 @@ services:
                   payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
                   local json = ngx.decode_base64(payload_b64)
                   if not json then return kong.response.exit(401, { message = "Invalid token payload" }) end
-                  local cjson = require("cjson.safe")
-                  local payload = cjson.decode(json)
-                  if not payload then return kong.response.exit(401, { message = "Invalid token json" }) end
-                  local aud = payload.aud
-                  if type(aud) == "table" then
+                  local arr = json:match('"aud"%s*:%s*%[([^%]]*)%]')
+                  if arr then
                     local ok = false
-                    for _, v in ipairs(aud) do if v == expected then ok = true break end end
+                    for v in arr:gmatch('"([^"]+)"') do if v == expected then ok = true end end
                     if not ok then return kong.response.exit(401, { message = "Invalid audience" }) end
-                  elseif aud ~= expected then
-                    return kong.response.exit(401, { message = "Invalid audience" })
+                  else
+                    local str = json:match('"aud"%s*:%s*"([^"]+)"')
+                    if str ~= expected then return kong.response.exit(401, { message = "Invalid audience" }) end
                   end
     plugins:
       - name: correlation-id
