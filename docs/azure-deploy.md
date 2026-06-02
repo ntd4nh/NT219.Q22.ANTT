@@ -405,24 +405,29 @@ import yaml, os
 BACKEND = '${BACKEND_PRIVATE_IP}'
 filepath = 'deploy/node-edge/docker-compose.yml'
 
-extra_hosts = [
+# webhook-authorizer chạy TRÊN vm-edge — KHÔNG map hostname này sang backend (sẽ trúng Keycloak:8080).
+backend_hosts = [
     f'order-service:{BACKEND}',
     f'user-service:{BACKEND}',
     f'billing-service:{BACKEND}',
     f'auth-service:{BACKEND}',
     f'keycloak:{BACKEND}',
     f'redis:{BACKEND}',
-    f'webhook-authorizer:{BACKEND}',
     f'vault:{BACKEND}',
 ]
 
 with open(filepath) as f:
     data = yaml.safe_load(f)
 
-for svc_name in ['kong', 'webhook-authorizer', 'billing-mtls-proxy', 'internal-mtls-proxy']:
+for svc_name in ['kong', 'billing-mtls-proxy', 'internal-mtls-proxy']:
     if 'services' in data and svc_name in data['services']:
-        data['services'][svc_name]['extra_hosts'] = extra_hosts
+        data['services'][svc_name]['extra_hosts'] = backend_hosts
         print(f'  Added extra_hosts to {svc_name}')
+
+# webhook-authorizer: chỉ backend deps, không override chính nó
+if 'services' in data and 'webhook-authorizer' in data['services']:
+    data['services']['webhook-authorizer']['extra_hosts'] = backend_hosts
+    print('  Added extra_hosts to webhook-authorizer (backend only)')
 
 with open(filepath, 'w') as f:
     yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
