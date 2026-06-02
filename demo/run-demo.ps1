@@ -2,8 +2,8 @@
 # ShopFlow Security Demo -- NT219
 # Chay: .\demo\run-demo.ps1
 
-$BASE  = "http://localhost:8888"
-$KC    = "http://localhost:8080"
+$BASE  = "http://4.193.178.246:8888"
+$KC    = "http://20.212.114.132:8080"
 $REALM = "shopflow"
 
 function Banner([string]$text, [string]$color = "Cyan") {
