@@ -39,9 +39,6 @@ export async function verifyWebhookRequest(req, webhookSecret, nonceTtlSec = 300
     return { ok: false, reason: 'TIMESTAMP_OUT_OF_WINDOW' }
   }
 
-  const replay = await markOnce(nonceKey(nonce), nonceTtlSec)
-  if (replay) return { ok: false, reason: 'NONCE_REPLAY' }
-
   // Bắt buộc raw Buffer: JSON.stringify(req.body) không byte-identical với body gốc
   // (key order, whitespace, unicode escapes có thể khác) → HMAC mismatch hoặc bypass.
   // Caller phải mount express.raw({ type: '*/*' }) trước middleware này.
@@ -49,10 +46,17 @@ export async function verifyWebhookRequest(req, webhookSecret, nonceTtlSec = 300
     return { ok: false, reason: 'RAW_BODY_REQUIRED' }
   }
   const raw = req.body
+
+  // HMAC trước nonce: không cần external dependency, fail fast với bad signature.
   const expectedHex = computeWebhookHmac(webhookSecret, raw)
   const provided = sigHeader.replace(/^sha256=/i, '')
   if (!timingSafeEqualHex(provided, expectedHex)) {
     return { ok: false, reason: 'INVALID_SIGNATURE' }
   }
+
+  // Nonce replay check sau HMAC: chỉ tiêu tốn Redis slot cho request hợp lệ.
+  const replay = await markOnce(nonceKey(nonce), nonceTtlSec)
+  if (replay) return { ok: false, reason: 'NONCE_REPLAY' }
+
   return { ok: true, rawBody: raw }
 }

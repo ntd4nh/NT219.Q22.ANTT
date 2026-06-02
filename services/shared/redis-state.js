@@ -42,7 +42,16 @@ export async function getRedisClient() {
     })
     connectPromise = redisClient.connect().then(() => redisClient)
   }
-  return connectPromise
+  try {
+    return await connectPromise
+  } catch {
+    connectPromise = null  // reset để request tiếp theo có thể retry
+    if (process.env.SHOPFLOW_ENV === 'production') {
+      throw new Error('Redis connection failed — required in production')
+    }
+    warnMemoryFallback()
+    return null  // fall back to in-memory in non-production
+  }
 }
 
 export async function redisPing() {
