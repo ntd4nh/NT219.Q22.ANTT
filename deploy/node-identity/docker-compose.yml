@@ -26,6 +26,7 @@ services:
     container_name: keycloak
     command: start-dev --hostname-strict=false --http-enabled=true --import-realm
     environment:
+      KC_HOSTNAME: keycloak
       KC_DB: postgres
       KC_DB_URL_HOST: keycloak-db
       KC_DB_USERNAME: keycloak

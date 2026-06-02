@@ -132,19 +132,19 @@ try {
   }
   $appToken = $tokenResp.auth.client_token
   if (-not $appToken) { throw "Khong nhan duoc app token tu Vault." }
-  # Ghi không BOM (PowerShell 5.1 Set-Content UTF8 thêm BOM gây lỗi env parse)
+  # Write without BOM (PS 5.1 Set-Content UTF8 adds BOM which breaks env parsing)
   [System.IO.File]::WriteAllText($AppTokenFile, $appToken, [System.Text.Encoding]::UTF8)
   Write-Host "[OK] app token (app-readonly) -> $AppTokenFile"
 
-  # Tự động cập nhật VAULT_APP_TOKEN trong core/.env
-  $envFile = Join-Path $PSScriptRoot ".." ".env"
+  # Auto-update VAULT_APP_TOKEN in core/.env
+  $envFile = Join-Path (Join-Path $PSScriptRoot "..") ".env"
   if (Test-Path $envFile) {
     $envContent = [System.IO.File]::ReadAllText($envFile, [System.Text.Encoding]::UTF8)
     $envContent = $envContent -replace "(?m)^VAULT_APP_TOKEN=.*", "VAULT_APP_TOKEN=$appToken"
     [System.IO.File]::WriteAllText($envFile, $envContent, [System.Text.Encoding]::UTF8)
     Write-Host "[OK] Da cap nhat VAULT_APP_TOKEN trong core/.env"
   } else {
-    Write-Host "[WARN] Khong tim thay core/.env — dat tay: VAULT_APP_TOKEN=$appToken"
+    Write-Host "[WARN] Khong tim thay core/.env -- dat tay: VAULT_APP_TOKEN=$appToken"
   }
 } catch {
   Write-Host "[FAIL] app token: $($_.Exception.Message)"
