@@ -1,8 +1,17 @@
 #Requires -Version 5.1
 # Auto test script -- no pauses, captures all results
+# Usage: .\demo\auto-test.ps1          -> local
+#        .\demo\auto-test.ps1 azure    -> Azure
 
-$BASE  = "http://localhost:8888"
-$KC    = "http://localhost:8080"
+param([string]$env = "local")
+
+if ($env -eq "azure") {
+    $BASE = "http://4.193.178.246:8888"
+    $KC   = "http://20.212.114.132:8080"
+} else {
+    $BASE = "http://localhost:8888"
+    $KC   = "http://localhost:8080"
+}
 $REALM = "shopflow"
 $Results = [System.Collections.Generic.List[string]]::new()
 

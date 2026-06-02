@@ -1,9 +1,17 @@
 #Requires -Version 5.1
 # ShopFlow Security Demo -- NT219
-# Chay: .\demo\run-demo.ps1
+# Usage: .\demo\run-demo.ps1          -> local
+#        .\demo\run-demo.ps1 azure    -> Azure
 
-$BASE  = "http://4.193.178.246:8888"
-$KC    = "http://20.212.114.132:8080"
+param([string]$env = "local")
+
+if ($env -eq "azure") {
+    $BASE = "http://4.193.178.246:8888"
+    $KC   = "http://20.212.114.132:8080"
+} else {
+    $BASE = "http://localhost:8888"
+    $KC   = "http://localhost:8080"
+}
 $REALM = "shopflow"
 
 function Banner([string]$text, [string]$color = "Cyan") {
