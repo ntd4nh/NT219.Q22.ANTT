@@ -77,7 +77,7 @@
 | `README.md` | [x] |
 | `core/README.md` | [x] |
 | `security/README.md` | [x] |
-| `implementation/03-core-e2e-checklist.md` | [x] |
+| `implementation/07-final-backend-checklist.md` (file này) | [x] |
 | `implementation/06-infra-security-status.md` | [x] |
 
 ---

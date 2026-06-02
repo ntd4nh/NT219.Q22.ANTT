@@ -20,7 +20,7 @@ Baseline lab gate: `security/run-security-checks.ps1` (layered 18/18).
 
 - [x] `core/docker-stack.yml` skeleton HA (edge, Kong, OPA, Keycloak, Vault, observability, secrets)
 - [ ] OPA PEP toàn service: orders/users/billing/auth — RBAC + ABAC — `core/opa/policies/*.rego` — **KHÔNG ACTIVE**: OPA runtime đã gỡ khỏi deployment; authZ thực tế nằm tại `services/shared/authz.js` (in-process)
-- [x] PKCE SPA (`frontend/src/auth/pkce.js`, `/callback`)
+- [~] PKCE SPA (built vào `frontend/dist/` — source `frontend/src/` không được commit vào repo)
 - [x] CI security fast/slow (`.github/workflows/security-pr.yml`, `security-nightly.yml`)
 - [x] Research metrics: prom-client histogram, recording rules, `metrics/run-g3-benchmark.ps1`
 - [x] Runbook sâu: `docs/runbook/*` (rotation, revocation, incident, onboarding)

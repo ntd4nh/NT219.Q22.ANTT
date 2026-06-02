@@ -1,7 +1,7 @@
 # Hướng dẫn triển khai ShopFlow lên Azure — Step by Step
 
-> **Yêu cầu:** Tài khoản Azure với $200 credit · Đã có stack chạy được ở local
-> **Thời gian:** 45–90 phút · **Chi phí:** ~$3.5/ngày (tắt VM khi không dùng: $0)
+> **Yêu cầu:** Tài khoản Azure với $100 credit · Đã có stack chạy được ở local
+> **Thời gian:** 45–90 phút · **Chi phí:** ~$2.67/ngày (8h/day) · $0.50/ngày khi deallocated
 > **Kết quả:** API chạy trên cloud thật, D4 SSRF nhắm Azure IMDS thật
 
 ---
@@ -14,7 +14,7 @@ Internet
     ▼
 ┌─────────────────────────────┐        ┌──────────────────────────────────┐
 │ VM-EDGE  (public IP)        │        │ VM-BACKEND  (private IP only)    │
-│ Standard_B2s · 2CPU · 4GB  │◄──────►│ Standard_B4ms · 4CPU · 16GB     │
+│ Standard_D2s_v3 · 2CPU·8GB │◄──────►│ Standard_D4s_v3 · 4CPU · 16GB   │
 │                             │ VNet   │                                  │
 │ shopflow_dmz (Docker)       │ 10.0.x │ shopflow_identity → keycloak     │
 │ ├─ edge-nginx (WAF)         │        │ shopflow_security → vault, redis │
@@ -113,7 +113,43 @@ az network vnet create \
 
 ---
 
-### Bước 2.3 — Tạo VM-EDGE
+### Bước 2.3 — Chọn VM size (chạy trước khi tạo VM)
+
+> ⚠️ **B-series (B2s, B2ms, B4ms) thường hết capacity tại Southeast Asia.** Dùng D-series thay thế — hiệu năng tốt hơn, availability cao hơn.
+
+Kiểm tra size nào đang available:
+
+```bash
+# Xem D2 available cho VM-EDGE
+az vm list-skus --location southeastasia --resource-type virtualMachines \
+  --output table 2>/dev/null | grep -E "Standard_D2(a)?s_v[3-5]" | grep -v NotAvailable
+
+# Xem D4 available cho VM-BACKEND
+az vm list-skus --location southeastasia --resource-type virtualMachines \
+  --output table 2>/dev/null | grep -E "Standard_D4(a)?s_v[3-5]" | grep -v NotAvailable
+```
+
+**Bảng chọn size thay thế:**
+
+| VM | Size ưu tiên | Fallback 1 | Fallback 2 | vCPU/RAM |
+|----|-------------|-----------|-----------|----------|
+| VM-EDGE | `Standard_D2s_v3` | `Standard_D2as_v4` | `Standard_D2s_v5` | 2/8GB |
+| VM-BACKEND | `Standard_D4s_v3` | `Standard_D4as_v4` | `Standard_D4s_v5` | 4/16GB |
+
+Khai báo size vào biến sau khi chọn:
+
+```bash
+# Thay bằng size available từ kết quả kiểm tra ở trên
+VM_EDGE_SIZE="Standard_D2s_v3"
+VM_BACKEND_SIZE="Standard_D4s_v3"
+
+echo "VM-EDGE   size: $VM_EDGE_SIZE"
+echo "VM-BACKEND size: $VM_BACKEND_SIZE"
+```
+
+---
+
+### Bước 2.4 — Tạo VM-EDGE
 
 > ⏱️ Bước này mất 2–3 phút. Không đóng Cloud Shell.
 
@@ -122,7 +158,7 @@ az vm create \
   --resource-group $RG \
   --name $VM_EDGE \
   --image Ubuntu2204 \
-  --size Standard_B2s \
+  --size $VM_EDGE_SIZE \
   --vnet-name $VNET_NAME \
   --subnet $SUBNET_NAME \
   --public-ip-sku Standard \
@@ -135,7 +171,7 @@ az vm create \
 
 ---
 
-### Bước 2.4 — Tạo VM-BACKEND
+### Bước 2.5 — Tạo VM-BACKEND
 
 > ⏱️ Bước này mất 2–3 phút.
 
@@ -144,7 +180,7 @@ az vm create \
   --resource-group $RG \
   --name $VM_BACKEND \
   --image Ubuntu2204 \
-  --size Standard_B4ms \
+  --size $VM_BACKEND_SIZE \
   --vnet-name $VNET_NAME \
   --subnet $SUBNET_NAME \
   --public-ip-sku Standard \
@@ -157,7 +193,7 @@ az vm create \
 
 ---
 
-### Bước 2.5 — Lấy IP addresses
+### Bước 2.6 — Lấy IP addresses
 
 ```bash
 EDGE_PUBLIC_IP=$(az vm show -d -g $RG -n $VM_EDGE    --query publicIps  -o tsv)
@@ -177,7 +213,7 @@ echo "============================================"
 
 ---
 
-### Bước 2.6 — Mở cổng tường lửa
+### Bước 2.7 — Mở cổng tường lửa
 
 ```bash
 # VM-EDGE: mở cổng ra internet
@@ -795,7 +831,8 @@ echo "   Chỉ $EDGE_PRIVATE_IP (VM-EDGE) mới được kết nối vào"
 ### Tắt VM để tiết kiệm credit
 
 ```bash
-# Tắt (deallocate = không tốn tiền compute, chỉ tốn tiền lưu trữ ~$0.05/ngày)
+# Deallocate = ngừng tính compute (~$0/h)
+# Vẫn tính: OS disk (~$0.26/ngày) + Public IP (~$0.24/ngày) = ~$0.50/ngày
 az vm deallocate -g shopflow-rg -n vm-edge    --no-wait
 az vm deallocate -g shopflow-rg -n vm-backend --no-wait
 echo "✅ Cả 2 VM đã tắt"
@@ -908,14 +945,39 @@ echo "✅ Đã xóa toàn bộ resources"
 
 ## Ước tính chi phí
 
-| VM | Size | Giá/giờ | 8 giờ/ngày | 7 ngày |
-|----|------|---------|-----------|--------|
-| VM-EDGE | Standard_B2s | $0.048 | $0.38 | $2.69 |
-| VM-BACKEND | Standard_B4ms | $0.184 | $1.47 | $10.30 |
-| **Tổng (8h/ngày)** | | | **$1.85** | **$13** |
-| **Tổng (24h/ngày)** | | | **$5.57** | **$39** |
+> Giá theo **Azure Southeast Asia, Linux, Pay-as-you-go** (tháng 6/2026). VM deallocate = ngừng tính compute nhưng disk và IP vẫn tính.
 
-**Còn lại sau 1 tuần demo (8h/ngày):** ~$87 từ $100.
+### Chi phí theo resource
+
+| Resource | Đơn giá | Ghi chú |
+|----------|---------|---------|
+| VM-EDGE · Standard_D2s_v3 | $0.096/h | Chỉ tính khi VM **running** |
+| VM-BACKEND · Standard_D4s_v3 | $0.192/h | Chỉ tính khi VM **running** |
+| OS Disk × 2 (Standard SSD 32GB) | $0.13/ngày/disk | Tính **liên tục** dù VM tắt |
+| Public IP Standard × 2 | $0.12/ngày/IP | Tính **liên tục** dù VM tắt |
+| VNet, NSG, Bandwidth (<100GB) | $0 | Miễn phí |
+
+### Chi phí theo kịch bản
+
+| Kịch bản | Compute | Disk + IP | Tổng/ngày | 7 ngày |
+|----------|---------|-----------|-----------|--------|
+| **Chạy 8h/ngày** (deallocate 16h còn lại) | $2.30 | $0.50 | **$2.80** | **$19.60** |
+| **Chạy 24h/ngày** | $6.91 | $0.50 | **$7.41** | **$51.87** |
+| **Deallocate hoàn toàn** (không chạy) | $0 | $0.50 | **$0.50** | **$3.50** |
+
+### Chi phí toàn bộ quá trình
+
+| Giai đoạn | Thời gian | Chi phí |
+|-----------|-----------|---------|
+| Setup (Phase 0–9, cả 2 VM chạy) | ~3 giờ | ~$0.86 |
+| Demo 7 ngày (8h/ngày) | 56 giờ | ~$19.60 |
+| **Tổng cộng** | | **~$20.46** |
+
+**Còn lại sau 1 tuần demo:** ~$80 từ $100 credit.
+
+> ⚠️ **Cảnh báo:** Nếu quên không deallocate, 2 VM chạy 24/7 tốn **~$7/ngày = $210/tháng** — vượt $100 credit sau 14 ngày. Luôn deallocate khi xong demo.
+>
+> 💡 **Mẹo:** Sau khi xóa resource group (`az group delete`), kiểm tra lại Azure Portal → Cost Management để đảm bảo không còn resource nào tính tiền.
 
 ---
 

@@ -9,7 +9,7 @@ services:
     container_name: user-service
     environment:
       PORT: 8080
-      KEYCLOAK_ISSUERS: http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow
+      KEYCLOAK_ISSUERS: ${KEYCLOAK_ISSUERS:-http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow}
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       SSRF_ALLOWLIST: cdn.shopflow.local,imgur.com
       REDIS_URL: redis://redis:6379
@@ -36,7 +36,7 @@ services:
       VAULT_TOKEN: ${VAULT_APP_TOKEN:-${VAULT_ROOT_TOKEN:-}}
       VAULT_DB_REQUIRED: ${VAULT_DB_REQUIRED:-false}
       DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in core/.env}
-      KEYCLOAK_ISSUERS: http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow
+      KEYCLOAK_ISSUERS: ${KEYCLOAK_ISSUERS:-http://keycloak:8080/realms/shopflow,http://localhost:8080/realms/shopflow}
       KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/shopflow/protocol/openid-connect/certs
       TENANT_RATE_LIMIT_RPM: ${TENANT_RATE_LIMIT_RPM:-120}
       REDIS_URL: redis://redis:6379

@@ -15,7 +15,7 @@
 
 - [x] Scenario + related entities + security requirements — `docs/books/Kien-truc-he-thong-NT219.md`.
 - [ ] Literature survey cập nhật (≥1 bài báo mới với DOI/venue).
-- [x] Mapping G1/G2/G3 — `docs/books/Kien-truc-he-thong-NT219.md` mục 8 + `implementation/09-gap-checklist-pass-fail.md`.
+- [x] Mapping G1/G2/G3 — `docs/books/Kien-truc-he-thong-NT219.md` mục 8 + `audit/AUDIT-REPORT.md` mục 4.
 - [x] Kết quả demo và phân tích — `docs/evidence/` + `metrics/g3-report.md`.
 
 ## Slide trình bày
@@ -29,13 +29,13 @@
 
 - [x] Source code + config (repo).
 - [x] Script/test evidence (`docs/evidence/`: log, screenshot, CSV benchmark).
-- [ ] PDF slide (export từ outline `delivery/03-slide-outline.md`).
-- [ ] Báo cáo PDF.
+- [ ] PDF slide (export từ outline `delivery/03-slide-outline.md` — outline đã có, cần export sang PDF/PPTX).
+- [~] Báo cáo viết — `report.md` (721 dòng) và `report.docx` đã có ở root; cần export sang PDF.
 - [ ] File checklist này đã tick đầy đủ.
 
 ---
 
 > **Còn lại cần làm trước nộp:**
-> 1. Bổ sung ≥1 bài báo mới vào `docs/books/Kien-truc-he-thong-NT219.md` mục 9.
-> 2. Export slide PDF.
-> 3. Hoàn thiện báo cáo viết (PDF).
+> 1. Bổ sung ≥1 bài báo mới (DOI/venue) vào `docs/books/Kien-truc-he-thong-NT219.md` mục 13.
+> 2. Export slide PDF từ `delivery/03-slide-outline.md`.
+> 3. Export `report.docx` sang PDF.

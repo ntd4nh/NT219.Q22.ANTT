@@ -1,6 +1,6 @@
-﻿_format_version: "3.0"
+_format_version: "3.0"
 
-# Kong JWT: RS256 via sync-kong-jwt-key.ps1 â€” verify signature + exp + iss (key_claim_name).
+# Kong JWT: RS256 via sync-kong-jwt-key.ps1 -- verify signature + exp + iss (key_claim_name).
 # Audience (aud) enforced via pre-function below (KONG_JWT_AUD, default shopflow-api).
 # Service layer still validates iss/aud as defense-in-depth.
 
@@ -84,9 +84,7 @@ services:
       - name: rate-limiting
         config:
           minute: 200
-          policy: redis
-          redis_host: redis
-          redis_port: 6379
+          policy: local
 
   - name: user-service
     url: http://user-service:8080
@@ -137,9 +135,7 @@ services:
       - name: rate-limiting
         config:
           minute: 150
-          policy: redis
-          redis_host: redis
-          redis_port: 6379
+          policy: local
 
   - name: webhook-authorizer
     url: http://webhook-authorizer:8080
@@ -156,9 +152,7 @@ services:
       - name: rate-limiting
         config:
           minute: 60
-          policy: redis
-          redis_host: redis
-          redis_port: 6379
+          policy: local
 
   - name: billing-service
     url: http://billing-service:8080
@@ -240,9 +234,7 @@ services:
       - name: rate-limiting
         config:
           minute: 60
-          policy: redis
-          redis_host: redis
-          redis_port: 6379
+          policy: local
 
   - name: auth-service
     url: http://auth-service:8080
@@ -259,17 +251,13 @@ services:
       - name: rate-limiting
         config:
           minute: 30
-          policy: redis
-          redis_host: redis
-          redis_port: 6379
+          policy: local
 
 plugins:
   - name: rate-limiting
     config:
       minute: 300
-      policy: redis
-      redis_host: redis
-      redis_port: 6379
+      policy: local
   - name: request-size-limiting
     config:
       allowed_payload_size: 2
