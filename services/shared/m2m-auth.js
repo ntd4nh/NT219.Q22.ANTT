@@ -50,7 +50,7 @@ export function requireM2mAuth(options = {}) {
       return res.status(401).json({ error: 'UNAUTHORIZED', message: 'M2M bearer token required' })
     }
 
-    jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, payload) => {
+    jwt.verify(token, getKey, { algorithms: ['ES256', 'RS256'] }, (err, payload) => {
       if (err) {
         incMetric('shopflow_auth_failures_total')
         if (log) audit(log, 'M2M_AUTH_FAILED', { correlationId: req.correlationId, reason: 'INVALID_TOKEN' })
