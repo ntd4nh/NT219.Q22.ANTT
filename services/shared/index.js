@@ -113,7 +113,7 @@ export function requireAuth(options = {}) {
       return authFailure(log, req, res, 'MISSING_TOKEN', 'Missing bearer token')
     }
 
-    jwt.verify(token, getKey, { algorithms: ['RS256'] }, (err, payload) => {
+    jwt.verify(token, getKey, { algorithms: ['ES256', 'RS256'] }, (err, payload) => {
       if (err) {
         const reason = err.name === 'TokenExpiredError' ? 'EXPIRED' : 'INVALID'
         incMetric('shopflow_auth_failures_total')

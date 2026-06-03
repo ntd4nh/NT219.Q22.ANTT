@@ -9,7 +9,7 @@ consumers:
     jwt_secrets:
       # iss từ bên trong Docker network (service-to-service)
       - key: http://keycloak:8080/realms/shopflow
-        algorithm: RS256
+        algorithm: ES256
         rsa_public_key: |-
           -----BEGIN PUBLIC KEY-----
           MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn9s2dL93VYZLSImALgZc
@@ -22,7 +22,7 @@ consumers:
           -----END PUBLIC KEY-----
       # iss khi Keycloak được truy cập từ host (localhost:8080) — cùng public key
       - key: http://localhost:8080/realms/shopflow
-        algorithm: RS256
+        algorithm: ES256
         rsa_public_key: |-
           -----BEGIN PUBLIC KEY-----
           MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn9s2dL93VYZLSImALgZc
@@ -36,7 +36,8 @@ consumers:
 
 services:
   - name: order-service
-    url: http://order-service:8080
+    url: https://backend-tls-proxy:8446
+    tls_verify: false
     routes:
       - name: order-route
         paths: ["/api/orders", "/api/internal/orders"]
@@ -87,7 +88,8 @@ services:
           policy: local
 
   - name: user-service
-    url: http://user-service:8080
+    url: https://backend-tls-proxy:8446
+    tls_verify: false
     routes:
       - name: user-route
         paths: ["/api/users", "/api/internal/users"]
@@ -155,7 +157,8 @@ services:
           policy: local
 
   - name: billing-service
-    url: http://billing-service:8080
+    url: https://backend-tls-proxy:8446
+    tls_verify: false
     routes:
       - name: billing-route
         paths: ["/api/billing", "/api/internal/billing"]
@@ -237,7 +240,8 @@ services:
           policy: local
 
   - name: auth-service
-    url: http://auth-service:8080
+    url: https://backend-tls-proxy:8446
+    tls_verify: false
     routes:
       - name: auth-route
         paths: ["/api/auth", "/api/internal/auth"]

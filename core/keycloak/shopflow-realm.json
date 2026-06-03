@@ -1,6 +1,21 @@
 {
   "realm": "shopflow",
   "enabled": true,
+  "components": {
+    "org.keycloak.keys.KeyProvider": [
+      {
+        "name": "ecdsa-generated",
+        "providerId": "ecdsa-generated",
+        "subComponents": {},
+        "config": {
+          "active":               ["true"],
+          "ecdsaEllipticCurveKey": ["P-256"],
+          "enabled":              ["true"],
+          "priority":             ["200"]
+        }
+      }
+    ]
+  },
   "sslRequired": "none",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,

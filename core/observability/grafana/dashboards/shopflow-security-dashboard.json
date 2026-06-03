@@ -1,0 +1,238 @@
+{
+  "title": "ShopFlow Security Events",
+  "uid": "shopflow-security-v2",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "D1 — BOLA Blocked",
+      "description": "Cross-tenant access bị chặn (so sánh tenant_id trong JWT với owner trong DB)",
+      "gridPos": { "x": 0, "y": 0, "w": 5, "h": 5 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "text": { "titleSize": 14, "valueSize": 48 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short",
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(shopflow_bola_blocked_total) or vector(0)",
+          "legendFormat": "BOLA Blocked"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "D2 — Token Replay Blocked",
+      "description": "Refresh token bị dùng lại lần 2 — Redis SET NX phát hiện",
+      "gridPos": { "x": 5, "y": 0, "w": 5, "h": 5 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "text": { "titleSize": 14, "valueSize": 48 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          },
+          "unit": "short",
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(shopflow_token_replay_total) or vector(0)",
+          "legendFormat": "Token Replay"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "D3 — Webhook Rejected",
+      "description": "Webhook giả mạo bị chặn — sai chữ ký HMAC hoặc replay nonce",
+      "gridPos": { "x": 10, "y": 0, "w": 5, "h": 5 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "text": { "titleSize": 14, "valueSize": 48 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 }
+            ]
+          },
+          "unit": "short",
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(shopflow_webhook_rejected_total) or vector(0)",
+          "legendFormat": "Webhook Rejected"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "D4 — SSRF Blocked",
+      "description": "Yêu cầu đến IP nội bộ / ngoài allowlist bị chặn",
+      "gridPos": { "x": 15, "y": 0, "w": 5, "h": 5 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "text": { "titleSize": 14, "valueSize": 48 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "purple", "value": 1 }
+            ]
+          },
+          "unit": "short",
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(shopflow_ssrf_blocked_total) or vector(0)",
+          "legendFormat": "SSRF Blocked"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Xác thực thất bại",
+      "description": "Tổng số lần xác thực thất bại — token hết hạn, sai chữ ký, v.v.",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 5 },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "text": { "titleSize": 14, "valueSize": 48 }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short",
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(shopflow_auth_failures_total) or vector(0)",
+          "legendFormat": "Auth Failures"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Sự kiện bảo mật — Real-time (refresh 5 giây)",
+      "description": "Counter tăng mỗi khi có tấn công bị chặn. Xanh = bình thường, đỉnh = đang tấn công.",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 9 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "always",
+            "pointSize": 7
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "BOLA Blocked" },      "properties": [{ "id": "color", "value": { "fixedColor": "red",    "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Token Replay" },      "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Webhook Rejected" },  "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "SSRF Blocked" },      "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Auth Failures" },     "properties": [{ "id": "color", "value": { "fixedColor": "#ff6b6b","mode": "fixed" } }] }
+        ]
+      },
+      "targets": [
+        { "expr": "sum(shopflow_bola_blocked_total) or vector(0)",       "legendFormat": "BOLA Blocked" },
+        { "expr": "sum(shopflow_token_replay_total) or vector(0)",       "legendFormat": "Token Replay" },
+        { "expr": "sum(shopflow_webhook_rejected_total) or vector(0)",   "legendFormat": "Webhook Rejected" },
+        { "expr": "sum(shopflow_ssrf_blocked_total) or vector(0)",       "legendFormat": "SSRF Blocked" },
+        { "expr": "sum(shopflow_auth_failures_total) or vector(0)",      "legendFormat": "Auth Failures" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "logs",
+      "title": "Nhật ký bảo mật — Loki (real-time)",
+      "description": "Log JSON từ tất cả service. Filter: bola, replay, ssrf, webhook",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 10 },
+      "options": {
+        "dedupStrategy": "none",
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true,
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{job=\"shopflow\"} |= \"audit\"",
+          "legendFormat": ""
+        }
+      ]
+    }
+  ]
+}
