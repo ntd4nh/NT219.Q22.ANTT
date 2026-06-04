@@ -28,7 +28,8 @@ $artifacts = @(
   'ca.key', 'ca.crt', 'server.key', 'server.crt', 'server.csr', 'server.ext',
   'client.key', 'client.crt', 'client.csr', 'client.ext', 'ca.srl',
   'order-service.key', 'order-service.crt', 'user-service.key', 'user-service.crt',
-  'billing-service.key', 'billing-service.crt', 'auth-service.key', 'auth-service.crt'
+  'billing-service.key', 'billing-service.crt', 'auth-service.key', 'auth-service.crt',
+  'vault.key', 'vault.crt'
 )
 foreach ($a in $artifacts) { Clear-CertArtifact $a }
 
@@ -72,6 +73,19 @@ extendedKeyUsage=clientAuth,serverAuth
   Remove-Item "$svc.ext" -ErrorAction SilentlyContinue
 }
 
+# Vault server cert (TLS listener) — SAN khớp tên service nội bộ + loopback
+openssl genrsa -out vault.key 2048
+openssl req -new -key vault.key -subj "/CN=vault" -out vault.csr
+$vaultExt = @"
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=DNS:vault,DNS:localhost,IP:127.0.0.1
+"@
+Set-Content -Path vault.ext -Value $vaultExt -Encoding ascii
+openssl x509 -req -in vault.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out vault.crt -days 825 -sha256 -extfile vault.ext
+Remove-Item vault.csr, vault.ext -ErrorAction SilentlyContinue
+
 Remove-Item server.csr, client.csr, server.ext, client.ext, ca.srl -ErrorAction SilentlyContinue
 
-Write-Host "[OK] Da tao: ca.crt, server.crt/key, client.crt/key, *-service.crt/key"
+Write-Host "[OK] Da tao: ca.crt, server.crt/key, client.crt/key, vault.crt/key, *-service.crt/key"

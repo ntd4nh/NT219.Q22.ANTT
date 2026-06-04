@@ -17,7 +17,7 @@ import {
   isAdmin,
   checkTenantAccess,
 } from '../shared/index.js'
-import { resolveDatabaseUrl } from '../shared/db-credentials.js'
+import { resolveDatabaseUrl, databaseSslOption } from '../shared/db-credentials.js'
 
 validateSecurityConfig('order-service')
 
@@ -187,7 +187,7 @@ app.get('/api/internal/orders/tenant-summary/:tenantId', m2mAuth, async (req, re
 
 async function start() {
   const connectionString = await resolveDatabaseUrl()
-  pool = new pg.Pool({ connectionString })
+  pool = new pg.Pool({ connectionString, ssl: databaseSslOption() })
   for (let i = 0; i < 30; i++) {
     try {
       await pool.query('SELECT 1')

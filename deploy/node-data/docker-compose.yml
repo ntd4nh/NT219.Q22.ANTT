@@ -9,8 +9,23 @@ services:
       POSTGRES_DB: shopflow
       POSTGRES_USER: shopflow_app
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in core/.env — must match Vault db-credentials}
+      DB_SSL: ${DB_SSL:-disable}
+    # Khi DB_SSL!=disable: bật TLS server-side. Key được copy ra /tmp (filesystem container)
+    # rồi chmod 600/chown postgres để thỏa ràng buộc quyền của PostgreSQL.
+    command:
+      - sh
+      - -c
+      - |
+        if [ "$$DB_SSL" != "disable" ] && [ -n "$$DB_SSL" ]; then
+          cp /certs/server.crt /tmp/server.crt && cp /certs/server.key /tmp/server.key
+          chmod 600 /tmp/server.key && chown 70:70 /tmp/server.key /tmp/server.crt
+          exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key
+        else
+          exec docker-entrypoint.sh postgres
+        fi
     volumes:
       - ../../core/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ../../core/certs:/certs:ro
       - app-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U shopflow_app -d shopflow"]

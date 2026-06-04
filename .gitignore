@@ -16,10 +16,13 @@ logs/
 !.env.example
 core/vault/.vault-init.json
 core/vault/.vault-app-token
+core/vault/.vault-unseal-key
+core/vault/.vault-root-token
 core/.env
 *.pem
 *.key
 *.crt
+*.p12
 secrets/
 
 # Node

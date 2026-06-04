@@ -8,6 +8,15 @@
 ## BƯỚC 0 — Thiết lập môi trường
 
 ### Chạy trên Azure Cloud Shell:
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `EDGE_IP` / `BACK_IP` | vm-edge (WAF/Kong) / vm-backend (Keycloak, Vault…) |
+| `BASE_URL :8888` | API HTTP qua WAF → Kong |
+| `KC_URL :8080` | Keycloak — lấy token |
+
 ```bash
 export EDGE_IP="4.193.178.246"
 export BACK_IP="20.212.114.132"
@@ -16,6 +25,18 @@ export KC_URL="http://$BACK_IP:8080"
 ```
 
 ### Lấy token mới (chạy ngay trước khi quay):
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `grant_type=password` → `VALID_TOKEN` | Token user tenant-a cho **D4** (SSRF) |
+| `grant_type=client_credentials` → `M2M_TOKEN` | Token M2M cho **D5** (Vault) |
+| `python3 ...['access_token']` | Parse JSON lấy token vào biến |
+| `${#VAR}` | Độ dài — kiểm tra cả hai > 0 |
+
+> Cả hai đều là JWT **ES256**; `M2M_TOKEN` được billing verify qua `requireM2mAuth` (đã nhận ES256 sau fix).
+
 ```bash
 # VALID_TOKEN cho D4
 TOKEN_RESP=$(curl -s -X POST \
@@ -43,6 +64,16 @@ echo "M2M_TOKEN   : ${#M2M_TOKEN} ký tự"
 
 ### D5 — Bước 1: Mã hóa dữ liệu thanh toán → ciphertext
 
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `-X POST .../vault-encrypt` | billing gọi Vault Transit Engine để mã hóa |
+| `Authorization: Bearer $M2M_TOKEN` | Endpoint chỉ M2M (ES256) |
+| `-d '{"plaintext":"..."}'` | Dữ liệu nhạy cảm (số thẻ, amount…) cần mã hóa |
+
+> Trả `vault:v1:...` = ciphertext **AES-256-GCM**; key nằm trong Vault, service không bao giờ thấy key.
+
 ```bash
 curl -s -w "\nHTTP: %{http_code}\n" \
   -X POST "$BASE_URL/api/billing/vault-encrypt" \
@@ -60,6 +91,16 @@ HTTP: 200
 ---
 
 ### D5 — Bước 2: Lưu ciphertext, decrypt lại → plaintext gốc
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `CIPHER=$(curl ... \| python3 ...['ciphertext'])` | Lưu ciphertext vào biến (mô phỏng lưu DB) |
+| `-X POST .../vault-decrypt` | Gửi ciphertext → Vault giải mã |
+| `-d "{\"ciphertext\":\"$CIPHER\"}"` | Body chứa ciphertext (escape `"` trong shell) |
+
+> Ra đúng plaintext gốc + `algorithm: aes256-gcm96`. GCM auth tag (128-bit) phát hiện nếu ciphertext bị tamper — AEAD, hơn hẳn CBC (Padding Oracle).
 
 ```bash
 CIPHER=$(curl -s \
@@ -91,6 +132,16 @@ curl -s \
 
 ### D4 — Bước 1: Azure IMDS thật → 403 (WAF chặn)
 
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `-X POST .../users/fetch-url` | Endpoint server tự fetch URL (nơi có thể bị SSRF) |
+| `-d '{"url":"http://169.254.169.254/metadata/..."}'` | Azure IMDS — endpoint trả credentials của VM |
+| `-w "...http_code..."` | In status |
+
+> ModSecurity bắt pattern IP metadata → **403** (HTML block page) ngay ở **edge**, chưa vào service.
+
 ```bash
 curl -s -w "\nHTTP: %{http_code}\n" \
   -H "Authorization: Bearer $VALID_TOKEN" \
@@ -105,6 +156,14 @@ curl -s -w "\nHTTP: %{http_code}\n" \
 
 ### D4 — Bước 2: Internal network → 403 (WAF chặn)
 
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `-d '{"url":"http://10.0.1.1/"}'` | IP nội bộ RFC 1918 (10.0.0.0/8) |
+
+> Cùng lớp bảo vệ WAF như Bước 1 → **403**. Chặn truy cập mạng nội bộ qua SSRF.
+
 ```bash
 curl -s -w "\nHTTP: %{http_code}\n" \
   -H "Authorization: Bearer $VALID_TOKEN" \
@@ -118,6 +177,14 @@ curl -s -w "\nHTTP: %{http_code}\n" \
 ---
 
 ### D4 — Bước 3: Domain ngoài allowlist → 403 (service-level)
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `-d '{"url":"https://google.com"}'` | Domain public hợp lệ nhưng **ngoài allowlist** |
+
+> Qua được WAF (domain public bình thường) nhưng `validateUrl()` ở service chặn → **403 JSON** `SSRF_BLOCKED` — đây là **lớp 2** (service-level), khác lớp WAF ở Bước 1–2.
 
 ```bash
 curl -s -w "\nHTTP: %{http_code}\n" \
@@ -136,6 +203,15 @@ HTTP: 403
 ---
 
 ### D4 — Bước 4: URL trong allowlist → không bị block
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `-d '{"url":"https://imgur.com"}'` | Domain **trong** allowlist (`SSRF_ALLOWLIST`) |
+| `-o /dev/null` | Bỏ body, chỉ cần biết không phải 403 |
+
+> Điểm mấu chốt: **KHÔNG** phải `403 SSRF_BLOCKED`. Có thể 200 hoặc timeout — miễn là không bị chặn, chứng minh allowlist hoạt động đúng chiều.
 
 ```bash
 curl -s -o /dev/null -w "Allowlist URL: HTTP %{http_code}\n" \

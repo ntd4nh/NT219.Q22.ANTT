@@ -5,11 +5,17 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis
-    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    # AUTH bật khi REDIS_PASSWORD được set (zero-trust: không cho phép truy cập ẩn danh trên mạng nội bộ).
+    command:
+      - sh
+      - -c
+      - 'if [ -n "$$REDIS_PASSWORD" ]; then exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"; else exec redis-server --appendonly yes; fi'
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "sh", "-c", 'redis-cli $${REDIS_PASSWORD:+-a "$$REDIS_PASSWORD"} --no-auth-warning ping | grep -q PONG']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -23,16 +29,20 @@ services:
     cap_add:
       - IPC_LOCK
     environment:
-      VAULT_ADDR: http://127.0.0.1:8200
-      VAULT_API_ADDR: http://vault:8200
+      # VAULT_LOCAL_ADDR/VAULT_SKIP_VERIFY điều khiển CLI nội bộ (status/healthcheck) theo http hay https.
+      VAULT_ADDR: ${VAULT_LOCAL_ADDR:-http://127.0.0.1:8200}
+      VAULT_API_ADDR: ${VAULT_API_ADDR:-http://vault:8200}
+      VAULT_SKIP_VERIFY: ${VAULT_SKIP_VERIFY:-}
     command: ["server", "-config=/vault/config/config.hcl"]
     ports:
       - "8200:8200"
     volumes:
-      - ../../core/vault/config.hcl:/vault/config/config.hcl:ro
+      # VAULT_CONFIG_FILE=config-tls.hcl để bật TLS listener; mặc định config.hcl (plaintext, chỉ lab).
+      - ../../core/vault/${VAULT_CONFIG_FILE:-config.hcl}:/vault/config/config.hcl:ro
+      - ../../core/certs:/vault/certs:ro
       - vault-data:/vault/file
     healthcheck:
-      test: ["CMD", "sh", "-c", "vault status -address=http://127.0.0.1:8200"]
+      test: ["CMD", "vault", "status"]
       interval: 10s
       timeout: 5s
       retries: 5

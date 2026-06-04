@@ -183,11 +183,13 @@ az vm create \
   --size $VM_BACKEND_SIZE \
   --vnet-name $VNET_NAME \
   --subnet $SUBNET_NAME \
-  --public-ip-sku Standard \
+  --public-ip-address "" \
   --admin-username $ADMIN_USER \
   --admin-password "$VM_PASS" \
   --authentication-type password
 ```
+
+> 🔒 **Zero-trust:** `--public-ip-address ""` → VM-BACKEND **không có IP public**, không bao giờ lộ ra internet. Mọi thao tác trên backend đi qua `az vm run-command` (control-plane) hoặc SSH-jump qua VM-EDGE. Các bước dưới dùng `$BACKEND_PUBLIC_IP` (browser test trực tiếp) sẽ không áp dụng — truy cập qua `$EDGE_PUBLIC_IP` thay thế.
 
 **Kết quả mong đợi:** JSON với `"powerState": "VM running"`.
 
@@ -224,16 +226,11 @@ az vm open-port -g $RG -n $VM_EDGE --port 8443 --priority 400
 az vm open-port -g $RG -n $VM_EDGE --port 8080 --priority 500
 echo "✅ NSG VM-EDGE OK"
 
-# VM-BACKEND: mở tất cả (sẽ khoá lại sau khi setup xong)
-az vm open-port -g $RG -n $VM_BACKEND --port 22   --priority 100
-az vm open-port -g $RG -n $VM_BACKEND --port 8080 --priority 200
-az vm open-port -g $RG -n $VM_BACKEND --port 8082 --priority 300
-az vm open-port -g $RG -n $VM_BACKEND --port 8083 --priority 400
-az vm open-port -g $RG -n $VM_BACKEND --port 8084 --priority 500
-az vm open-port -g $RG -n $VM_BACKEND --port 8085 --priority 600
-az vm open-port -g $RG -n $VM_BACKEND --port 3000 --priority 700
-az vm open-port -g $RG -n $VM_BACKEND --port 9090 --priority 800
-echo "✅ NSG VM-BACKEND OK"
+# VM-BACKEND: KHÔNG mở cổng nào ra internet.
+# - VM-BACKEND không có public IP (xem Bước 2.5) → không reachable từ internet.
+# - Mọi lệnh setup backend đi qua `az vm run-command` (Azure control-plane), không qua NSG.
+# - Quyền inbound duy nhất là từ VM-EDGE, được cấp ở PHASE 10 (allow-from-edge, least-privilege).
+echo "✅ NSG VM-BACKEND: giữ mặc định deny-inbound từ internet (đúng zero-trust)"
 ```
 
 ---
@@ -801,16 +798,19 @@ BACKEND_NSG=$(az network nsg list -g $RG \
   --query "[?contains(name,'$VM_BACKEND')].name" -o tsv | head -1)
 echo "NSG VM-BACKEND: $BACKEND_NSG"
 
-# Cho phép VM-EDGE kết nối vào (tất cả cổng)
+# Cho phép VM-EDGE kết nối vào — CHỈ đúng cổng cần (least-privilege, không "*").
+# Edge cần: Keycloak 8080 (JWKS), service 8082-8085 (Kong upstream),
+#           Vault 8200 + Redis 6379 (webhook-authorizer / mtls-proxy chạy trên edge).
+# KHÔNG mở 5432 (Postgres chỉ nội bộ backend), 3000/9090 (obs không phục vụ edge).
 az network nsg rule create \
   --resource-group $RG \
   --nsg-name $BACKEND_NSG \
   --name "allow-from-edge" \
   --priority 110 \
   --source-address-prefixes $EDGE_PRIVATE_IP \
-  --destination-port-ranges "*" \
+  --destination-port-ranges 8080 8082 8083 8084 8085 8200 6379 \
   --access Allow \
-  --protocol "*"
+  --protocol Tcp
 
 # Từ chối tất cả kết nối từ internet (trừ những rule priority cao hơn)
 az network nsg rule create \
@@ -828,6 +828,105 @@ echo "   Chỉ $EDGE_PRIVATE_IP (VM-EDGE) mới được kết nối vào"
 ```
 
 > ⚠️ **Sau bước này,** `$BACKEND_PUBLIC_IP:8080` (Keycloak) và `$BACKEND_PUBLIC_IP:3000` (Grafana) sẽ không còn truy cập được từ browser trực tiếp. Dùng browser vào qua `$EDGE_PUBLIC_IP:8888` hoặc tạm thời gỡ rule deny khi cần debug.
+
+---
+
+## PHASE 11 — Hardening zero-trust (khuyến nghị cho nền semi-trust)
+
+> Azure là nền *semi-trust*: hạ tầng dùng chung, snapshot đĩa và control-plane đều nằm ngoài tầm kiểm soát của bạn. Phase này **mã hóa mọi hop nội bộ** và **siết bí mật** để dù Azure đọc được đĩa/mạng cũng không lấy được dữ liệu rõ. Mặc định lab để OFF; bật trên cloud.
+
+### Bước 11.1 — Sinh CA + cert nội bộ trên VM-BACKEND
+
+```bash
+az vm run-command invoke -g $RG -n $VM_BACKEND --command-id RunShellScript --scripts "
+  cd /home/azureuser/Crypto_project/core/certs
+  openssl genrsa -out ca.key 4096
+  openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -subj '/CN=NT219-Lab-CA' -out ca.crt
+  for pair in 'vault:vault' 'server:app-db'; do
+    name=\${pair%%:*}; cn=\${pair##*:}
+    openssl genrsa -out \$name.key 2048
+    openssl req -new -key \$name.key -subj \"/CN=\$cn\" -out \$name.csr
+    openssl x509 -req -in \$name.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out \$name.crt -days 825 -sha256 \
+      -extfile <(printf \"subjectAltName=DNS:\$cn,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth\")
+    rm -f \$name.csr
+  done
+  chown -R azureuser:azureuser /home/azureuser/Crypto_project/core/certs
+  echo CERTS_OK
+"
+```
+
+VM-EDGE cũng cần `ca.crt` để verify Vault https — copy CA sang edge:
+
+```bash
+CA_B64=$(az vm run-command invoke -g $RG -n $VM_BACKEND --command-id RunShellScript \
+  --scripts "base64 -w0 /home/azureuser/Crypto_project/core/certs/ca.crt" \
+  --query "value[0].message" -o tsv | grep -v '\[std' | tr -d '\n')
+ssh -o StrictHostKeyChecking=no $ADMIN_USER@$EDGE_PUBLIC_IP \
+  "echo '$CA_B64' | base64 -d > ~/Crypto_project/core/certs/ca.crt && echo EDGE_CA_OK"
+```
+
+### Bước 11.2 — Bật hardening trong `core/.env` (cả 2 VM)
+
+```bash
+HARDEN='
+SHOPFLOW_ENV=production
+REDIS_PASSWORD=__REPLACE__
+REDIS_URL=redis://:__REPLACE__@redis:6379
+VAULT_CONFIG_FILE=config-tls.hcl
+VAULT_ADDR=https://vault:8200
+VAULT_LOCAL_ADDR=https://127.0.0.1:8200
+VAULT_API_ADDR=https://vault:8200
+VAULT_SKIP_VERIFY=true
+NODE_EXTRA_CA_CERTS=/certs/ca.crt
+DB_SSL=require
+'
+# Sinh 1 password Redis ngẫu nhiên, dùng chung cả 2 VM
+REDIS_PW=$(openssl rand -hex 24)
+
+for VM in $VM_BACKEND; do
+  az vm run-command invoke -g $RG -n $VM --command-id RunShellScript --scripts "
+    cd /home/azureuser/Crypto_project
+    printf '%s' \"$HARDEN\" | sed 's/__REPLACE__/$REDIS_PW/g' >> core/.env
+    echo HARDEN_ENV_OK
+  "
+done
+ssh -o StrictHostKeyChecking=no $ADMIN_USER@$EDGE_PUBLIC_IP "
+  cd ~/Crypto_project
+  printf '%s' '$HARDEN' | sed 's/__REPLACE__/$REDIS_PW/g' >> core/.env
+  echo HARDEN_EDGE_OK
+"
+```
+
+> ⚠️ `SHOPFLOW_ENV=production` bật **fail-closed**: thiếu Redis/Vault/HMAC secret là service sẽ refuse khởi động (xem `services/shared/security-config.js`). Đảm bảo đã set `HMAC_SECRET`, `KEYCLOAK_M2M_CLIENT_SECRET`, `DB_PASSWORD` ≠ giá trị mặc định trước khi redeploy.
+
+### Bước 11.3 — Redeploy data + security + app nodes để áp TLS
+
+```bash
+az vm run-command invoke -g $RG -n $VM_BACKEND --command-id RunShellScript --timeout-in-seconds 300 --scripts "
+  cd /home/azureuser/Crypto_project; ENV=core/.env
+  docker compose -f deploy/node-data/docker-compose.yml     -p shopflow-data     --env-file \$ENV up -d
+  docker compose -f deploy/node-security/docker-compose.yml -p shopflow-security --env-file \$ENV up -d
+  docker compose -f deploy/node-app-a/docker-compose.yml    -p shopflow-app-a    --env-file \$ENV up -d
+  docker compose -f deploy/node-app-b/docker-compose.yml    -p shopflow-app-b    --env-file \$ENV up -d
+  echo REDEPLOY_TLS_OK
+"
+# Vault sẽ ở trạng thái sealed sau khi container TLS lên lại → unseal (xem mục bên dưới)
+```
+
+### Bước 11.4 — Tách custody khóa unseal khỏi repo
+
+Mặc định Phase 6 ghi `core/vault/.vault-unseal-key` **ngay trong cây mã nguồn** — nếu lỡ `git add` là khóa lên GitHub. Chuyển ra ngoài repo:
+
+```bash
+az vm run-command invoke -g $RG -n $VM_BACKEND --command-id RunShellScript --scripts "
+  mkdir -p /home/azureuser/.shopflow-secrets && chmod 700 /home/azureuser/.shopflow-secrets
+  mv /home/azureuser/Crypto_project/core/vault/.vault-unseal-key /home/azureuser/.shopflow-secrets/ 2>/dev/null || true
+  mv /home/azureuser/Crypto_project/core/vault/.vault-root-token  /home/azureuser/.shopflow-secrets/ 2>/dev/null || true
+  echo SECRETS_MOVED
+"
+```
+
+> 🔑 **Đúng zero-trust hơn nữa:** dùng Vault auto-unseal qua Azure Key Vault (`seal \"azurekeyvault\"`) hoặc Shamir `-key-shares=5 -key-threshold=3` giữ ở nhiều nơi — để **không một ai/thiết bị đơn lẻ** (kể cả VM Azure) unseal được Vault một mình. Trong lab single-VM thì tách-thư-mục là mức tối thiểu chấp nhận được.
 
 ---
 

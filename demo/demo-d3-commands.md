@@ -8,6 +8,16 @@
 
 ## BƯỚC 0 — Thiết lập môi trường (chạy MỖI LẦN mở Cloud Shell mới)
 
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `export VAR=...` | Biến môi trường dùng lại trong phiên shell |
+| `EDGE_IP` / `BACK_IP` | vm-edge (WAF/Kong/proxy mTLS) / vm-backend (Keycloak, Redis…) |
+| `BASE_URL :8888` | API HTTP **qua WAF** — dùng cho cleartext + `test-sign` |
+| `MTLS_URL :8443` | **Chỉ** webhook thanh toán, bắt buộc client cert (mTLS) |
+| `KC_URL :8080` | Keycloak — lấy M2M token |
+
 ```bash
 export EDGE_IP="4.193.178.246"
 export BACK_IP="20.212.114.132"
@@ -19,6 +29,18 @@ export MTLS_URL="https://$EDGE_IP:8443"
 ---
 
 ## BƯỚC 1 — Copy cert mTLS client (chạy 1 lần / khi mất file `/tmp`)
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `for f in client.crt client.key` | Lặp qua 2 file cần copy |
+| `az vm run-command ... cat .../certs/$f` | In nội dung cert/key đã sinh trên vm-edge |
+| `--query "value[0].message" -o tsv` | Lấy đúng trường `message`, bỏ JSON bao quanh |
+| `grep -v "^\[" \| sed '1d'` | Bỏ dòng log `[stdout]` thừa của Azure |
+| `> /tmp/$f` | Lưu cert tạm trên Cloud Shell cho `curl --cert` |
+
+> Cert client = credential **mTLS** — attacker từ Internet không có file `.crt`/`.key` này thì TLS handshake fail trước khi gửi được HTTP.
 
 ```bash
 for f in client.crt client.key; do
@@ -44,6 +66,17 @@ head -1 /tmp/client.crt /tmp/client.key
 ## BƯỚC 2 — Lấy M2M token (chạy ngay trước bước 3–4)
 
 > ⚠️ Token sống ~5 phút. Chạy xong bước 3–4 liên tục, không chờ lâu.
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `grant_type=client_credentials` | Luồng M2M — không có user, đại diện service nội bộ |
+| `client_id=shopflow-s2s` + secret | Định danh service trong realm `shopflow` |
+| `python3 ...['access_token']` | Lấy JWT M2M (ES256) vào `$M2M_TOKEN` |
+| `${#M2M_TOKEN}` | Độ dài token — kiểm tra không rỗng |
+
+> Token M2M được billing verify qua `requireM2mAuth` — đã chấp nhận **ES256** (sau fix m2m-auth). `test-sign` chỉ cho M2M để tránh signing oracle công khai.
 
 ```bash
 M2M_RESP=$(curl -s -X POST \
@@ -72,6 +105,17 @@ echo "==================================="
 
 ### D3 — Bước 1: Webhook qua HTTP cleartext → 403 (WAF)
 
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `TS=$(date +%s)` | Unix timestamp giây → header `X-Timestamp` chống request cũ |
+| `-X POST $BASE_URL/...webhook` | Gửi qua **HTTP :8888** (qua WAF), **không** mTLS |
+| `-o /dev/null -w "...http_code..."` | Bỏ body, chỉ in status |
+| `X-Signature: sha256=deadbeef` | Chữ ký giả |
+
+> ModSecurity rule chặn POST webhook trên cleartext → **403**, chưa tốn tài nguyên Kong/billing.
+
 ```bash
 TS=$(date +%s)
 curl -s -o /dev/null -w "Cleartext webhook: HTTP %{http_code}\n" \
@@ -88,6 +132,17 @@ curl -s -o /dev/null -w "Cleartext webhook: HTTP %{http_code}\n" \
 ---
 
 ### D3 — Bước 2: mTLS + chữ ký SAI → 401 (authorizer)
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `https://$EDGE_IP:8443` | `billing-mtls-proxy` — Nginx verify **client cert** với CA nội bộ |
+| `curl -sk` | `-s` silent; `-k` bỏ verify **server** cert (self-signed lab) |
+| `--cert /tmp/client.crt --key /tmp/client.key` | Trình client certificate trong TLS handshake |
+| `X-Signature: sha256=deadbeefdeadbeef` | HMAC cố ý sai |
+
+> Qua được mTLS → tới `webhook-authorizer`, verify HMAC **constant-time** → sai → **401**, không forward billing.
 
 ```bash
 TS=$(date +%s)
@@ -113,6 +168,17 @@ HTTP: 401
 
 ### D3 — Bước 3: Sinh chữ ký HMAC hợp lệ (M2M)
 
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `export BODY='{...}'` | JSON cố định — HMAC phụ thuộc **từng byte** của body |
+| `POST .../test-sign` | API helper lab ký hộ — **chỉ** client M2M được gọi |
+| `Authorization: Bearer $M2M_TOKEN` | billing verify JWT M2M (ES256) |
+| `python3 ...['signature']` | Lấy `sha256=<hex>` vào `$SIG` |
+
+> Secret HMAC nằm ở Vault KV / env, **không** nằm trong request.
+
 ```bash
 export BODY='{"event":"payment.succeeded","order_id":"ord-001","amount":5000000}'
 
@@ -130,6 +196,16 @@ echo "Chữ ký: $SIG"
 ---
 
 ### D3 — Bước 4: mTLS + chữ ký ĐÚNG → 200
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `TS=$(date +%s)` / `NONCE="demo-valid-$TS"` | Timestamp mới + nonce **chưa dùng** |
+| `X-Signature: $SIG` | Chữ ký khớp body từ bước 3 |
+| Cùng `$BODY` như bước 3 | Bắt buộc — đổi body thì chữ ký phải tính lại |
+
+> Đủ: mTLS + HMAC đúng + timestamp trong ±300s + nonce mới → authorizer forward billing nội bộ (kèm secret) → `received:true` **200**.
 
 ```bash
 export TS=$(date +%s)
@@ -157,6 +233,15 @@ HTTP: 200
 
 > ⚠️ Dùng **cùng** `$TS`, `$NONCE`, `$SIG`, `$BODY` từ bước 4 — không tạo nonce mới.
 
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| Dùng **lại** `$TS $NONCE $SIG $BODY` bước 4 | Mô phỏng attacker capture request hợp lệ và gửi lại |
+| Kết quả `NONCE_REPLAY` 401 | Redis đã ghi nonce từ lần 4 (TTL ~300s) → reject |
+
+> Chống replay ở tầng authorizer (idempotency) — billing không xử lý trùng sự kiện thanh toán.
+
 ```bash
 curl -sk -w "\nHTTP: %{http_code}\n" \
   -X POST "$MTLS_URL/api/billing/webhook" \
@@ -177,6 +262,14 @@ HTTP: 401
 ---
 
 ### D3 — Bước 6 (tùy chọn): Xem audit log trên vm-edge
+
+**Giải thích lệnh:**
+
+| Thành phần | Ý nghĩa |
+|---|---|
+| `az vm run-command ... -n vm-edge` | webhook-authorizer chạy trên vm-edge |
+| `docker logs webhook-authorizer` | Log structured JSON của authorizer |
+| `grep -E 'WEBHOOK\|webhook' \| tail -5` | Lọc event webhook, giữ 5 dòng cuối |
 
 ```bash
 az vm run-command invoke -g shopflow-rg -n vm-edge \
